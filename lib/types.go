@@ -3,6 +3,8 @@ package lib
 // Types in this file are extracted from lotus to break dependency which is extraneous to maintain
 // and blocks ent development on lotus integration of latest changes before testing out migrations
 import (
+	"bytes"
+
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
@@ -65,14 +67,14 @@ type BlockHeader struct {
 	validated bool // true if the signature has been validated
 }
 
-// func DecodeBlock(b []byte) (*BlockHeader, error) {
-// 	var blk BlockHeader
-// 	if err := blk.UnmarshalCBOR(bytes.NewReader(b)); err != nil {
-// 		return nil, err
-// 	}
+func DecodeBlock(b []byte) (*BlockHeader, error) {
+	var blk BlockHeader
+	if err := blk.UnmarshalCBOR(bytes.NewReader(b)); err != nil {
+		return nil, err
+	}
 
-// 	return &blk, nil
-// }
+	return &blk, nil
+}
 
 // From lotus/chain/types/state.go
 

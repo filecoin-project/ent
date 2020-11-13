@@ -5,12 +5,11 @@ import (
 
 	dgbadger "github.com/dgraph-io/badger/v2"
 	"github.com/filecoin-project/go-state-types/abi"
-	"github.com/filecoin-project/lotus/chain/types"
 	cid "github.com/ipfs/go-cid"
 	datastore "github.com/ipfs/go-datastore"
 	badger "github.com/ipfs/go-ds-badger2"
-	"github.com/ipfs/go-ipfs-blockstore"
-	"github.com/ipfs/go-ipld-cbor"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	cbornode "github.com/ipfs/go-ipld-cbor"
 	"golang.org/x/xerrors"
 )
 
@@ -71,8 +70,8 @@ func (c *Chain) FlushBufferedState(ctx context.Context, stateRoot cid.Cid) error
 // ChainStateIterator moves from tip to genesis emiting parent state roots of blocks
 type ChainStateIterator struct {
 	bs         blockstore.Blockstore
-	currBlock  *types.BlockHeader
-	currParent *types.BlockHeader
+	currBlock  *BlockHeader
+	currParent *BlockHeader
 }
 
 type IterVal struct {
@@ -91,7 +90,7 @@ func (c *Chain) NewChainStateIterator(ctx context.Context, tipCid cid.Cid) (*Cha
 		return nil, err
 	}
 
-	blk, err := types.DecodeBlock(raw.RawData())
+	blk, err := DecodeBlock(raw.RawData())
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +136,7 @@ func (it *ChainStateIterator) Step(ctx context.Context) error {
 	return err
 }
 
-func getParent(blk *types.BlockHeader, bs blockstore.Blockstore) (*types.BlockHeader, error) {
+func getParent(blk *BlockHeader, bs blockstore.Blockstore) (*BlockHeader, error) {
 	parents := blk.Parents
 	if len(parents) == 0 {
 		return nil, xerrors.Errorf("cannot get parent from input blk, is it genesis?")
@@ -147,5 +146,5 @@ func getParent(blk *types.BlockHeader, bs blockstore.Blockstore) (*types.BlockHe
 	if err != nil {
 		return nil, err
 	}
-	return types.DecodeBlock(raw.RawData())
+	return DecodeBlock(raw.RawData())
 }

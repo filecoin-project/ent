@@ -16,17 +16,16 @@ import (
 
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
-	"github.com/filecoin-project/lotus/chain/types"
 	adt0 "github.com/filecoin-project/specs-actors/actors/util/adt"
 	builtin2 "github.com/filecoin-project/specs-actors/v2/actors/builtin"
 	migration2 "github.com/filecoin-project/specs-actors/v2/actors/migration"
 	states2 "github.com/filecoin-project/specs-actors/v2/actors/states"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-ipld-cbor"
+	cbornode "github.com/ipfs/go-ipld-cbor"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
 
-	"github.com/zenground0/ent/lib"
+	"github.com/filecoin-project/ent/lib"
 )
 
 var migrateCmd = &cli.Command{
@@ -486,7 +485,7 @@ func validate(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.Chai
 
 func loadStateTree(ctx context.Context, store cbornode.IpldStore, stateRoot cid.Cid) (*states2.Tree, error) {
 	adtStore := adt0.WrapStore(ctx, store)
-	var treeTop types.StateRoot
+	var treeTop lib.StateRoot
 	err := store.Get(ctx, stateRoot, &treeTop)
 	if err != nil {
 		return nil, err

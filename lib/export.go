@@ -7,10 +7,10 @@ import (
 
 	address "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
-	"github.com/filecoin-project/lotus/chain/actors/adt"
 	"github.com/filecoin-project/specs-actors/v2/actors/builtin"
 	"github.com/filecoin-project/specs-actors/v2/actors/builtin/miner"
 	"github.com/filecoin-project/specs-actors/v2/actors/states"
+	"github.com/filecoin-project/specs-actors/v2/actors/util/adt"
 )
 
 type SectorInfo struct {

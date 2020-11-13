@@ -3,15 +3,12 @@ package lib
 import (
 	"context"
 
-	lbstore "github.com/filecoin-project/lotus/lib/blockstore"
 	block "github.com/ipfs/go-block-format"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-ipfs-blockstore"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/mitchellh/go-homedir"
 	"golang.org/x/xerrors"
-
-	lvm "github.com/filecoin-project/lotus/chain/vm"
 )
 
 // BufferedBlockstore pushes all writes to an in memory cache blockstore and reads
@@ -45,8 +42,8 @@ func NewBufferedBlockstore(readLotusPath, writeEntPath string) (*BufferedBlockst
 	}
 
 	return &BufferedBlockstore{
-		roBuffer: lbstore.NewTemporary(),
-		buffer:   lbstore.NewTemporarySync(),
+		roBuffer: NewTemporary(),
+		buffer:   NewTemporarySync(),
 		read:     blockstore.NewBlockstore(lotusDS),
 		write:    blockstore.NewBlockstore(entDS),
 	}, nil
@@ -133,7 +130,7 @@ func (rb *BufferedBlockstore) HashOnRead(enabled bool) {
 }
 
 func (rb *BufferedBlockstore) LoadToReadOnlyBuffer(ctx context.Context, c cid.Cid) error {
-	return lvm.Copy(ctx, rb.read, rb.roBuffer, c)
+	return BlockstoreCopy(ctx, rb.read, rb.roBuffer, c)
 }
 
 func (rb *BufferedBlockstore) FlushFromBuffer(ctx context.Context, c cid.Cid) error {

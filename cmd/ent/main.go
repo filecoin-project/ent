@@ -145,7 +145,7 @@ func runMigrateOneCmd(c *cli.Context) error {
 		return err
 	}
 	defer cleanUp()
-	stateRootIn, err := cid.Decode(c.Args().First())
+	stateRootInRaw, err := cid.Decode(c.Args().First())
 	if err != nil {
 		return err
 	}
@@ -161,6 +161,10 @@ func runMigrateOneCmd(c *cli.Context) error {
 
 	// Migrate State
 	store, err := chn.LoadCborStore(c.Context)
+	if err != nil {
+		return err
+	}
+	stateRootIn, err := loadStateRoot(c.Context, store, stateRootInRaw)
 	if err != nil {
 		return err
 	}
@@ -222,7 +226,11 @@ func runMigrateChainCmd(c *cli.Context) error {
 		if k == 0 || val.Height%int64(k) == int64(0) { // skip every k epochs
 			start := time.Now()
 			height := abi.ChainEpoch(val.Height)
-			stateRootOut, err := migration7.MigrateStateTree(c.Context, store, val.State, height, migration7.DefaultConfig())
+			stateRoot, err := loadStateRoot(c.Context, store, val.State)
+			if err != nil {
+				return err
+			}
+			stateRootOut, err := migration7.MigrateStateTree(c.Context, store, stateRoot, height, migration7.DefaultConfig())
 			duration := time.Since(start)
 			if err != nil {
 				fmt.Printf("%d -- %s => %s !! %v\n", val.Height, val.State, stateRootOut, err)
@@ -486,12 +494,19 @@ func validate(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.Chai
 
 func loadStateTree(ctx context.Context, store cbornode.IpldStore, stateRoot cid.Cid) (*states2.Tree, error) {
 	adtStore := adt0.WrapStore(ctx, store)
-	var treeTop lib.StateRoot
-	err := store.Get(ctx, stateRoot, &treeTop)
+	stateRoot, err := loadStateRoot(ctx, store, stateRoot)
 	if err != nil {
 		return nil, err
 	}
+	return states2.LoadTree(adtStore, stateRoot)
+}
+
+func loadStateRoot(ctx context.Context, store cbornode.IpldStore, stateRoot cid.Cid) (cid.Cid, error) {
+	var treeTop lib.StateRoot
+	err := store.Get(ctx, stateRoot, &treeTop)
+	if err != nil {
+		return cid.Undef, err
+	}
 	_, _ = fmt.Fprintf(os.Stderr, "State root version: %v\n", treeTop.Version)
-	tree, err := states2.LoadTree(adtStore, treeTop.Actors)
-	return tree, nil
+	return treeTop.Actors, nil
 }

@@ -65,6 +65,7 @@ var validateCmd = &cli.Command{
 			Action: runValidateCmd,
 			Flags: []cli.Flag{
 				&cli.StringFlag{Name: "preload"},
+				&cli.BoolFlag{Name: "unwrapped"},
 			},
 		},
 	},
@@ -185,7 +186,7 @@ func runMigrateOneCmd(c *cli.Context) error {
 	fmt.Printf("%s buffer flush time: %v\n", stateRootOut, writeDuration)
 
 	if c.Bool("validate") {
-		err := validate(c.Context, store, height, stateRootOut)
+		err := validate(c.Context, store, height, stateRootOut, false)
 		if err != nil {
 			return err
 		}
@@ -246,7 +247,7 @@ func runMigrateChainCmd(c *cli.Context) error {
 
 			// Optional Post-Migration State Validation
 			if c.Bool("validate") {
-				err := validate(c.Context, store, height, stateRootOut)
+				err := validate(c.Context, store, height, stateRootOut, false)
 				if err != nil {
 					return err
 				}
@@ -284,8 +285,12 @@ func runValidateCmd(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	wrapped := true
+	if c.Bool("unwrapped") {
+		wrapped = false
+	}
 
-	return validate(c.Context, store, height, stateRoot)
+	return validate(c.Context, store, height, stateRoot, wrapped)
 }
 
 func runRootsCmd(c *cli.Context) error {
@@ -472,10 +477,19 @@ func maybePreload(ctx context.Context, chn *lib.Chain, preloadStr string) error 
 	return err
 }
 
-func validate(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.ChainEpoch, stateRoot cid.Cid) error {
-	tree, err := loadStateTree(ctx, store, stateRoot)
-	if err != nil {
-		return xerrors.Errorf("failed to load tree: %w", err)
+func validate(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.ChainEpoch, stateRoot cid.Cid, wrapped bool) error {
+	var tree *states2.Tree
+	var err error
+	if wrapped {
+		tree, err = loadStateTree(ctx, store, stateRoot)
+		if err != nil {
+			return xerrors.Errorf("failed to load tree: %w", err)
+		}
+	} else {
+		tree, err = states2.LoadTree(adt0.WrapStore(ctx, store), stateRoot)
+		if err != nil {
+			return xerrors.Errorf("failed to load tree: %w", err)
+		}
 	}
 	expectedBalance := builtin2.TotalFilecoin
 	start := time.Now()

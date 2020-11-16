@@ -18,7 +18,8 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	adt0 "github.com/filecoin-project/specs-actors/actors/util/adt"
 	builtin2 "github.com/filecoin-project/specs-actors/v2/actors/builtin"
-	migration2 "github.com/filecoin-project/specs-actors/v2/actors/migration"
+	migration4 "github.com/filecoin-project/specs-actors/v2/actors/migration/nv4"
+	migration7 "github.com/filecoin-project/specs-actors/v2/actors/migration/nv7"
 	states2 "github.com/filecoin-project/specs-actors/v2/actors/states"
 	cid "github.com/ipfs/go-cid"
 	cbornode "github.com/ipfs/go-ipld-cbor"
@@ -164,7 +165,7 @@ func runMigrateOneCmd(c *cli.Context) error {
 		return err
 	}
 	start := time.Now()
-	stateRootOut, err := migration2.MigrateStateTree(c.Context, store, stateRootIn, height, migration2.DefaultConfig())
+	stateRootOut, err := migration7.MigrateStateTree(c.Context, store, stateRootIn, height, migration7.DefaultConfig())
 	duration := time.Since(start)
 	if err != nil {
 		return err
@@ -221,7 +222,7 @@ func runMigrateChainCmd(c *cli.Context) error {
 		if k == 0 || val.Height%int64(k) == int64(0) { // skip every k epochs
 			start := time.Now()
 			height := abi.ChainEpoch(val.Height)
-			stateRootOut, err := migration2.MigrateStateTree(c.Context, store, val.State, height, migration2.DefaultConfig())
+			stateRootOut, err := migration7.MigrateStateTree(c.Context, store, val.State, height, migration7.DefaultConfig())
 			duration := time.Since(start)
 			if err != nil {
 				fmt.Printf("%d -- %s => %s !! %v\n", val.Height, val.State, stateRootOut, err)
@@ -326,12 +327,12 @@ func runDebtsCmd(c *cli.Context) error {
 		return err
 	}
 
-	bf, err := migration2.InputTreeBurntFunds(c.Context, store, stateRootIn)
+	bf, err := migration4.InputTreeBurntFunds(c.Context, store, stateRootIn)
 	if err != nil {
 		return err
 	}
 
-	available, err := migration2.InputTreeMinerAvailableBalance(c.Context, store, stateRootIn)
+	available, err := migration4.InputTreeMinerAvailableBalance(c.Context, store, stateRootIn)
 	if err != nil {
 		return err
 	}

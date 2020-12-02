@@ -11,6 +11,7 @@ func main() {
 		lib.BeaconEntry{},
 		lib.ElectionProof{},
 		lib.BlockHeader{},
+		lib.StateRoot{},
 	); err != nil {
 		panic(err)
 	}

@@ -90,6 +90,11 @@ var infoCmd = &cli.Command{
 			Description: "display all miner actor locked funds and available balances",
 			Action:      runBalancesCmd,
 		},
+		{
+			Name:        "ipld-stats",
+			Description: "Measure characteristics of state tree HAMTs and AMTs",
+			Action:      runIpldStatsCmd,
+		},
 	},
 }
 
@@ -388,6 +393,26 @@ func runBalancesCmd(c *cli.Context) error {
 		fmt.Printf("%s,%v,%v\n", addr, bi.LockedFunds, availableBalance)
 	}
 	return nil
+}
+
+func runIpldStatsCmd(c *cli.Context) error {
+	if !c.Args().Present() {
+		return xerrors.Errorf("not enough args, need state root")
+	}
+	stateRootIn, err := cid.Decode(c.Args().First())
+	if err != nil {
+		return err
+	}
+	chn := lib.Chain{}
+	store, err := chn.LoadCborStore(c.Context)
+	if err != nil {
+		return err
+	}
+	tree, err := loadStateTree(c.Context, store, stateRootIn)
+	if err != nil {
+		return err
+	}
+	return lib.PrintIpldStats(c.Context, store, tree, true)
 }
 
 func runExportSectorsCmd(c *cli.Context) error {

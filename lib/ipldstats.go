@@ -75,14 +75,15 @@ func PrintIpldStats(ctx context.Context, store cbornode.IpldStore, tree *states2
 	amtSummaries = append(amtSummaries, marketAMTSummaries...)
 
 	// Miner
-	if verbose {
-		fmt.Printf("Miner\n")
-	}
+
 	activeAddrs, totalClaims, err := activeMiners(ctx, store, tree)
 	if err != nil {
 		return err
 	}
-	minerAggrHAMTSummaries, minerAggrAMTSummaries, err := minerStats(ctx, store, tree, activeAddrs)
+	if verbose {
+		fmt.Printf("Miner, %d to go\n", len(activeAddrs))
+	}
+	minerAggrHAMTSummaries, minerAggrAMTSummaries, err := minerStats(ctx, store, tree, activeAddrs, verbose)
 	if err != nil {
 		return err
 	}
@@ -130,7 +131,7 @@ func PrintIpldStats(ctx context.Context, store cbornode.IpldStore, tree *states2
 	return nil
 }
 
-func minerStats(ctx context.Context, store cbornode.IpldStore, tree *states2.Tree, active []address.Address) ([]*SummaryAggregateHAMT, []*SummaryAggregateAMT, error) {
+func minerStats(ctx context.Context, store cbornode.IpldStore, tree *states2.Tree, active []address.Address, verbose bool) ([]*SummaryAggregateHAMT, []*SummaryAggregateAMT, error) {
 	var precommitSectors []*SummaryHAMT
 	var precommitSectorExpiry []*SummaryAMT
 	var sectors []*SummaryAMT
@@ -142,7 +143,10 @@ func minerStats(ctx context.Context, store cbornode.IpldStore, tree *states2.Tre
 	var aggrHAMTSummaries []*SummaryAggregateHAMT
 	var aggrAMTSummaries []*SummaryAggregateAMT
 
-	for _, a := range active {
+	for i, a := range active {
+		if verbose && i%50 == 0 {
+			fmt.Printf("%d miners processed\n", i)
+		}
 		minerActor, found, err := tree.GetActor(a)
 		if !found {
 			return nil, nil, xerrors.Errorf("miner actor with non zero claim %s not found", a)
@@ -213,7 +217,7 @@ func minerStats(ctx context.Context, store cbornode.IpldStore, tree *states2.Tre
 	}
 
 	// aggregate stats
-	if summary, err := aggregateHAMTMeasurements(precommitSectors, "miner.PrecommittedSectors"); err != nil {
+	if summary, err := aggregateHAMTMeasurements(precommitSectors, "miner.PreCommittedSectors"); err != nil {
 		return nil, nil, err
 	} else {
 		aggrHAMTSummaries = append(aggrHAMTSummaries, summary)

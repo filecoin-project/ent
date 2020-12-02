@@ -24,13 +24,16 @@ import (
 	"golang.org/x/xerrors"
 )
 
-func PrintIpldStats(ctx context.Context, store cbornode.IpldStore, tree *states2.Tree) error {
+func PrintIpldStats(ctx context.Context, store cbornode.IpldStore, tree *states2.Tree, verbose bool) error {
 	var hamtSummaries []*SummaryHAMT
 	var hamtAggrSummaries []*SummaryAggregateHAMT
 	var amtSummaries []*SummaryAMT
 	var amtAggrSummaries []*SummaryAggregateAMT
 
 	// Init
+	if verbose {
+		fmt.Printf("Init\n")
+	}
 	initActor, found, err := tree.GetActor(builtin.InitActorAddr)
 	if !found {
 		return xerrors.Errorf("init actor not found")
@@ -49,6 +52,9 @@ func PrintIpldStats(ctx context.Context, store cbornode.IpldStore, tree *states2
 	}
 
 	// Power
+	if verbose {
+		fmt.Printf("Power\n")
+	}
 	powerHAMTSummaries, _, _, powerAggrAMTSummaries, err := powerStats(ctx, store, tree)
 	if err != nil {
 		return err
@@ -57,6 +63,9 @@ func PrintIpldStats(ctx context.Context, store cbornode.IpldStore, tree *states2
 	amtAggrSummaries = append(amtAggrSummaries, powerAggrAMTSummaries...)
 
 	// Market
+	if verbose {
+		fmt.Printf("Market\n")
+	}
 	marketHAMTSummaries, marketAggrHAMTSummaries, marketAMTSummaries, err := marketStats(ctx, store, tree)
 	if err != nil {
 		return err
@@ -66,6 +75,9 @@ func PrintIpldStats(ctx context.Context, store cbornode.IpldStore, tree *states2
 	amtSummaries = append(amtSummaries, marketAMTSummaries...)
 
 	// Miner
+	if verbose {
+		fmt.Printf("Miner\n")
+	}
 	activeAddrs, totalClaims, err := activeMiners(ctx, store, tree)
 	if err != nil {
 		return err

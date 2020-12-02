@@ -412,7 +412,7 @@ func runIpldStatsCmd(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	return lib.PrintIpldStats(c.Context, store, tree)
+	return lib.PrintIpldStats(c.Context, store, tree, true)
 }
 
 func runExportSectorsCmd(c *cli.Context) error {

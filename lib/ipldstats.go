@@ -2,15 +2,19 @@ package lib
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"sort"
 
+	address "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-amt-ipld/v2"
 	"github.com/filecoin-project/go-hamt-ipld/v2"
+	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/specs-actors/v2/actors/builtin"
 	init2 "github.com/filecoin-project/specs-actors/v2/actors/builtin/init"
 	"github.com/filecoin-project/specs-actors/v2/actors/builtin/market"
+	"github.com/filecoin-project/specs-actors/v2/actors/builtin/miner"
 	"github.com/filecoin-project/specs-actors/v2/actors/builtin/power"
-	"github.com/filecoin-project/specs-actors/v2/actors/builtin/verifreg"
 	states2 "github.com/filecoin-project/specs-actors/v2/actors/states"
 	"github.com/filecoin-project/specs-actors/v2/actors/util/adt"
 	cid "github.com/ipfs/go-cid"
@@ -22,6 +26,10 @@ import (
 
 func PrintIpldStats(ctx context.Context, store cbornode.IpldStore, tree *states2.Tree) error {
 	var hamtSummaries []*SummaryHAMT
+	var hamtAggrSummaries []*SummaryAggregateHAMT
+	var amtSummaries []*SummaryAMT
+	var amtAggrSummaries []*SummaryAggregateAMT
+
 	// Init
 	initActor, found, err := tree.GetActor(builtin.InitActorAddr)
 	if !found {
@@ -40,91 +48,277 @@ func PrintIpldStats(ctx context.Context, store cbornode.IpldStore, tree *states2
 		hamtSummaries = append(hamtSummaries, summary)
 	}
 
-	// VerifReg
-	verifRegActor, found, err := tree.GetActor(builtin.VerifiedRegistryActorAddr)
-	if !found {
-		return xerrors.Errorf("verified registry actor not found")
-	}
+	// Power
+	powerHAMTSummaries, _, _, powerAggrAMTSummaries, err := powerStats(ctx, store, tree)
 	if err != nil {
 		return err
 	}
-	var verifRegState verifreg.State
-	if err := store.Get(ctx, verifRegActor.Head, &verifRegState); err != nil {
-		return err
-	}
-	if summary, err := measureHAMT(ctx, store, verifRegState.Verifiers, "verifreg.Verifiers"); err != nil {
-		return err
-	} else {
-		hamtSummaries = append(hamtSummaries, summary)
-	}
-	if summary, err := measureHAMT(ctx, store, verifRegState.VerifiedClients, "verifreg.VerifiedClients"); err != nil {
-		return err
-	} else {
-		hamtSummaries = append(hamtSummaries, summary)
-	}
+	hamtSummaries = append(hamtSummaries, powerHAMTSummaries...)
+	amtAggrSummaries = append(amtAggrSummaries, powerAggrAMTSummaries...)
 
 	// Market
-	marketActor, found, err := tree.GetActor(builtin.StorageMarketActorAddr)
-	if !found {
-		return xerrors.Errorf("market actor not found")
-	}
+	marketHAMTSummaries, marketAggrHAMTSummaries, marketAMTSummaries, err := marketStats(ctx, store, tree)
 	if err != nil {
 		return err
 	}
-	var marketState market.State
-	if err := store.Get(ctx, marketActor.Head, &marketState); err != nil {
+	hamtSummaries = append(hamtSummaries, marketHAMTSummaries...)
+	hamtAggrSummaries = append(hamtAggrSummaries, marketAggrHAMTSummaries...)
+	amtSummaries = append(amtSummaries, marketAMTSummaries...)
+
+	// Miner
+	activeAddrs, totalClaims, err := activeMiners(ctx, store, tree)
+	if err != nil {
 		return err
 	}
-	if summary, err := measureHAMT(ctx, store, marketState.PendingProposals, "market.PendingProposals"); err != nil {
+	minerAggrHAMTSummaries, minerAggrAMTSummaries, err := minerStats(ctx, store, tree, activeAddrs)
+	if err != nil {
 		return err
-	} else {
-		hamtSummaries = append(hamtSummaries, summary)
 	}
-	if summary, err := measureHAMT(ctx, store, marketState.EscrowTable, "market.EscrowTable"); err != nil {
-		return err
-	} else {
-		hamtSummaries = append(hamtSummaries, summary)
-	}
-	if summary, err := measureHAMT(ctx, store, marketState.LockedTable, "market.LockedTable"); err != nil {
-		return err
-	} else {
-		hamtSummaries = append(hamtSummaries, summary)
-	}
-	if summary, err := measureHAMT(ctx, store, marketState.DealOpsByEpoch, "market.DealOpsByEpoch"); err != nil {
-		return err
-	} else {
-		hamtSummaries = append(hamtSummaries, summary)
+	hamtAggrSummaries = append(hamtAggrSummaries, minerAggrHAMTSummaries...)
+	amtAggrSummaries = append(amtAggrSummaries, minerAggrAMTSummaries...)
+
+	// Print stats
+	sort.Slice(hamtSummaries, func(i int, j int) bool {
+		return hamtSummaries[i].ID < hamtSummaries[j].ID
+	})
+	sort.Slice(amtSummaries, func(i int, j int) bool {
+		return amtSummaries[i].ID < amtSummaries[j].ID
+	})
+	sort.Slice(hamtAggrSummaries, func(i int, j int) bool {
+		return hamtAggrSummaries[i].ID < hamtAggrSummaries[j].ID
+	})
+	sort.Slice(amtAggrSummaries, func(i int, j int) bool {
+		return amtAggrSummaries[i].ID < amtAggrSummaries[j].ID
+	})
+	fmt.Printf("Total Miners: %d, Active Miners: %d\n", totalClaims, len(activeAddrs))
+	fmt.Printf("Singleton AMTs\n")
+	fmt.Printf("ID, AverageDataSize, KeyRange, Total\n")
+	for _, summary := range amtSummaries {
+		summary.Print()
 	}
 
-	// Power
-	powerActor, found, err := tree.GetActor(builtin.StoragePowerActorAddr)
-	if !found {
-		return xerrors.Errorf("power actor not found")
+	fmt.Printf("Aggregate AMTs\n")
+	fmt.Printf("ID, AverageDataSize, MinAvgDataSize, MaxAvgDataSize, AverageKeyRange, MinKeyRange, MaxKeyRange, AverageTotal, MinTotal, MaxTotal")
+	for _, summary := range amtAggrSummaries {
+		summary.Print()
 	}
-	if err != nil {
-		return err
+
+	fmt.Printf("Singleton HAMTs\n")
+	fmt.Printf("ID, AverageDataSize, AverageKeySize, Total\n")
+	for _, summary := range hamtSummaries {
+		summary.Print()
 	}
-	var powerState power.State
-	err = store.Get(ctx, powerActor.Head, &powerState)
-	if err != nil {
-		return err
-	}
-	if summary, err := measureHAMT(ctx, store, powerState.CronEventQueue, "power.CronEventQueue"); err != nil {
-		return err
-	} else {
-		hamtSummaries = append(hamtSummaries, summary)
-	}
-	if summary, err := measureHAMT(ctx, store, powerState.Claims, "power.Claims"); err != nil {
-		return err
-	} else {
-		hamtSummaries = append(hamtSummaries, summary)
+
+	fmt.Printf("Aggregate HAMTs\n")
+	fmt.Printf("ID, AverageDataSize, MinAvgDataSize, MaxAvgDataSize, AverageKeySize, MinAvgKeySize, MaxAvgKeySize, AverageTotal, MinTotal, MaxTotal\n")
+	for _, summary := range hamtAggrSummaries {
+		summary.Print()
 	}
 
 	return nil
 }
 
+func minerStats(ctx context.Context, store cbornode.IpldStore, tree *states2.Tree, active []address.Address) ([]*SummaryAggregateHAMT, []*SummaryAggregateAMT, error) {
+	var precommitSectors []*SummaryHAMT
+	var precommitSectorExpiry []*SummaryAMT
+	var sectors []*SummaryAMT
+	var deadlinePartitions []*SummaryAMT
+	var deadlineExpirationEpochs []*SummaryAMT
+	var partitionExpirationEpochs []*SummaryAMT
+	var partitionEarlyTerminated []*SummaryAMT
+
+	var aggrHAMTSummaries []*SummaryAggregateHAMT
+	var aggrAMTSummaries []*SummaryAggregateAMT
+
+	for _, a := range active {
+		minerActor, found, err := tree.GetActor(a)
+		if !found {
+			return nil, nil, xerrors.Errorf("miner actor with non zero claim %s not found", a)
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		var minerState miner.State
+		if err := store.Get(ctx, minerActor.Head, &minerState); err != nil {
+			return nil, nil, err
+		}
+		if summary, err := measureHAMT(ctx, store, minerState.PreCommittedSectors, "miner.PreCommittedSectors"); err != nil {
+			return nil, nil, err
+		} else {
+			precommitSectors = append(precommitSectors, summary)
+		}
+		if summary, err := measureAMT(ctx, store, minerState.PreCommittedSectorsExpiry, "miner.PreCommittedSectorsExpiry"); err != nil {
+			return nil, nil, err
+		} else {
+			precommitSectorExpiry = append(precommitSectorExpiry, summary)
+		}
+		if summary, err := measureAMT(ctx, store, minerState.Sectors, "miner.Sectors"); err != nil {
+			return nil, nil, err
+		} else {
+			sectors = append(sectors, summary)
+		}
+		dls, err := minerState.LoadDeadlines(adt.WrapStore(ctx, store))
+		if err != nil {
+			return nil, nil, err
+		}
+		err = dls.ForEach(adt.WrapStore(ctx, store), func(dlIdx uint64, dl *miner.Deadline) error {
+			if dl.TotalSectors == 0 {
+				return nil // skip empty deadlines
+			}
+			if summary, err := measureAMT(ctx, store, dl.Partitions, "miner.DeadlinePartitions"); err != nil {
+				return err
+			} else {
+				deadlinePartitions = append(deadlinePartitions, summary)
+			}
+			if summary, err := measureAMT(ctx, store, dl.ExpirationsEpochs, "miner.DeadlineExpirationEpochs"); err != nil {
+				return err
+			} else {
+				deadlineExpirationEpochs = append(deadlineExpirationEpochs, summary)
+			}
+			parts, err := dl.PartitionsArray(adt.WrapStore(ctx, store))
+			if err != nil {
+				return err
+			}
+			var partition miner.Partition
+			err = parts.ForEach(&partition, func(i int64) error {
+				if summary, err := measureAMT(ctx, store, partition.ExpirationsEpochs, "miner.PartitionExpirationEpochs"); err != nil {
+					return err
+				} else {
+					partitionExpirationEpochs = append(partitionExpirationEpochs, summary)
+				}
+				if summary, err := measureAMT(ctx, store, partition.EarlyTerminated, "miner.PartitionEarlyTerminated"); err != nil {
+					return err
+				} else {
+					partitionEarlyTerminated = append(partitionEarlyTerminated, summary)
+				}
+				return nil
+			})
+			return err
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	// aggregate stats
+	if summary, err := aggregateHAMTMeasurements(precommitSectors, "miner.PrecommittedSectors"); err != nil {
+		return nil, nil, err
+	} else {
+		aggrHAMTSummaries = append(aggrHAMTSummaries, summary)
+	}
+	if summary, err := aggregateAMTMeasurements(precommitSectorExpiry, "miner.PreCommittedSectorsExpiry"); err != nil {
+		return nil, nil, err
+	} else {
+		aggrAMTSummaries = append(aggrAMTSummaries, summary)
+	}
+	if summary, err := aggregateAMTMeasurements(sectors, "miner.Sectors"); err != nil {
+		return nil, nil, err
+	} else {
+		aggrAMTSummaries = append(aggrAMTSummaries, summary)
+	}
+	if summary, err := aggregateAMTMeasurements(deadlinePartitions, "miner.DeadlinePartitions"); err != nil {
+		return nil, nil, err
+	} else {
+		aggrAMTSummaries = append(aggrAMTSummaries, summary)
+	}
+	if summary, err := aggregateAMTMeasurements(deadlineExpirationEpochs, "miner.DeadlineExpirationEpochs"); err != nil {
+		return nil, nil, err
+	} else {
+		aggrAMTSummaries = append(aggrAMTSummaries, summary)
+	}
+	if summary, err := aggregateAMTMeasurements(partitionExpirationEpochs, "miner.PartitionExpirationEpochs"); err != nil {
+		return nil, nil, err
+	} else {
+		aggrAMTSummaries = append(aggrAMTSummaries, summary)
+	}
+	if summary, err := aggregateAMTMeasurements(partitionEarlyTerminated, "miner.PartitionEarlyTerminated"); err != nil {
+		return nil, nil, err
+	} else {
+		aggrAMTSummaries = append(aggrAMTSummaries, summary)
+	}
+	return aggrHAMTSummaries, aggrAMTSummaries, nil
+}
+
+func marketStats(ctx context.Context, store cbornode.IpldStore, tree *states2.Tree) ([]*SummaryHAMT, []*SummaryAggregateHAMT, []*SummaryAMT, error) {
+	var hamtSummaries []*SummaryHAMT
+	var amtSummaries []*SummaryAMT
+	var aggrHAMTSummaries []*SummaryAggregateHAMT
+
+	marketActor, found, err := tree.GetActor(builtin.StorageMarketActorAddr)
+	if !found {
+		return nil, nil, nil, xerrors.Errorf("market actor not found")
+	}
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var marketState market.State
+	if err := store.Get(ctx, marketActor.Head, &marketState); err != nil {
+		return nil, nil, nil, err
+	}
+	// Singleton HAMTs
+	if summary, err := measureHAMT(ctx, store, marketState.PendingProposals, "market.PendingProposals"); err != nil {
+		return nil, nil, nil, err
+	} else {
+		hamtSummaries = append(hamtSummaries, summary)
+	}
+	if summary, err := measureHAMT(ctx, store, marketState.EscrowTable, "market.EscrowTable"); err != nil {
+		return nil, nil, nil, err
+	} else {
+		hamtSummaries = append(hamtSummaries, summary)
+	}
+	if summary, err := measureHAMT(ctx, store, marketState.LockedTable, "market.LockedTable"); err != nil {
+		return nil, nil, nil, err
+	} else {
+		hamtSummaries = append(hamtSummaries, summary)
+	}
+	if summary, err := measureHAMT(ctx, store, marketState.DealOpsByEpoch, "market.DealOpsByEpoch"); err != nil {
+		return nil, nil, nil, err
+	} else {
+		hamtSummaries = append(hamtSummaries, summary)
+	}
+
+	// Singleton AMTs
+	if summary, err := measureAMT(ctx, store, marketState.Proposals, "market.Proposals"); err != nil {
+		return nil, nil, nil, err
+	} else {
+		amtSummaries = append(amtSummaries, summary)
+	}
+	if summary, err := measureAMT(ctx, store, marketState.States, "market.States"); err != nil {
+		return nil, nil, nil, err
+	} else {
+		amtSummaries = append(amtSummaries, summary)
+	}
+
+	// Aggregate HAMT
+	dobe, err := adt.AsMap(adt.WrapStore(ctx, store), marketState.DealOpsByEpoch)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var dealSet cbg.CborCid
+	var dealOpsByEpochLayer2Measures []*SummaryHAMT
+	err = dobe.ForEach(&dealSet, func(a string) error {
+		measure, err := measureHAMT(ctx, store, cid.Cid(dealSet), "market.DealOpsByEpochLayer2")
+		if err != nil {
+			return err
+		}
+		dealOpsByEpochLayer2Measures = append(dealOpsByEpochLayer2Measures, measure)
+		return nil
+	})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if summary, err := aggregateHAMTMeasurements(dealOpsByEpochLayer2Measures, "market.DealOpsByEpochLayer2"); err != nil {
+		return nil, nil, nil, err
+	} else {
+		aggrHAMTSummaries = append(aggrHAMTSummaries, summary)
+	}
+
+	return hamtSummaries, aggrHAMTSummaries, amtSummaries, nil
+}
+
 func powerStats(ctx context.Context, store cbornode.IpldStore, tree *states2.Tree) ([]*SummaryHAMT, []*SummaryAggregateHAMT, []*SummaryAMT, []*SummaryAggregateAMT, error) {
 	var hamtSummaries []*SummaryHAMT
+	var aggrAMTSummaries []*SummaryAggregateAMT
 	powerActor, found, err := tree.GetActor(builtin.StoragePowerActorAddr)
 	if !found {
 		return nil, nil, nil, nil, xerrors.Errorf("power actor not found")
@@ -137,6 +331,7 @@ func powerStats(ctx context.Context, store cbornode.IpldStore, tree *states2.Tre
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
+	// Singleton HAMTs
 	if summary, err := measureHAMT(ctx, store, powerState.CronEventQueue, "power.CronEventQueue"); err != nil {
 		return nil, nil, nil, nil, err
 	} else {
@@ -148,7 +343,70 @@ func powerStats(ctx context.Context, store cbornode.IpldStore, tree *states2.Tre
 		hamtSummaries = append(hamtSummaries, summary)
 	}
 
-	return hamtSummaries, nil, nil, nil, nil
+	// Aggregate AMTs
+	cronQueue, err := adt.AsMap(adt.WrapStore(ctx, store), powerState.CronEventQueue)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	var cronEvents cbg.CborCid
+	var cronEventQueueLayer2Measures []*SummaryAMT
+	err = cronQueue.ForEach(&cronEvents, func(a string) error {
+		measure, err := measureAMT(ctx, store, cid.Cid(cronEvents), "power.CronEventQueueLayer2")
+		if err != nil {
+			return err
+		}
+		cronEventQueueLayer2Measures = append(cronEventQueueLayer2Measures, measure)
+		return nil
+	})
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	if summary, err := aggregateAMTMeasurements(cronEventQueueLayer2Measures, "power.CronEventQueueLayer2"); err != nil {
+		return nil, nil, nil, nil, err
+	} else {
+		aggrAMTSummaries = append(aggrAMTSummaries, summary)
+	}
+
+	return hamtSummaries, nil, nil, aggrAMTSummaries, nil
+}
+
+func activeMiners(ctx context.Context, store cbornode.IpldStore, tree *states2.Tree) ([]address.Address, int, error) {
+	powerActor, found, err := tree.GetActor(builtin.StoragePowerActorAddr)
+	if !found {
+		return nil, 0, xerrors.Errorf("power actor not found")
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	var powerState power.State
+	err = store.Get(ctx, powerActor.Head, &powerState)
+	if err != nil {
+		return nil, 0, err
+	}
+	// Walk claims and record all addresses with more than 0 power
+	claimsTable, err := adt.AsMap(adt.WrapStore(ctx, store), powerState.Claims)
+	if err != nil {
+		return nil, 0, err
+	}
+	var activeAddrs []address.Address
+	var claim power.Claim
+	total := 0
+	err = claimsTable.ForEach(&claim, func(a string) error {
+		total++
+		if claim.RawBytePower.GreaterThan(big.Zero()) {
+			addr, err := address.NewFromBytes([]byte(a))
+			if err != nil {
+				return err
+			}
+			activeAddrs = append(activeAddrs, addr)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	return activeAddrs, total, nil
 }
 
 type SummaryAMT struct {
@@ -156,6 +414,10 @@ type SummaryAMT struct {
 	AverageDataSize float64
 	KeyRange        uint64
 	Total           int
+}
+
+func (s *SummaryAMT) Print() {
+	fmt.Printf("%s, %f, %d, %d\n", s.ID, s.AverageDataSize, s.KeyRange, s.Total)
 }
 
 func measureAMT(ctx context.Context, store cbornode.IpldStore, root cid.Cid, id string) (*SummaryAMT, error) {
@@ -198,6 +460,15 @@ type SummaryAggregateAMT struct {
 	AverageTotal   float64
 	MinTotalForAMT int
 	MaxTotalForAMT int
+}
+
+func (s *SummaryAggregateAMT) Print() {
+	fmt.Printf(
+		"%s, %f, %f, %f, %f, %d, %d, %f, %d, %d",
+		s.ID, s.AverageDataSize, s.MinAverageDataSizeForAMT, s.MaxAverageDataSizeForAMT,
+		s.AverageKeyRange, s.MinKeyRangeForAMT, s.MaxKeyRangeForAMT,
+		s.AverageTotal, s.MinTotalForAMT, s.MaxTotalForAMT,
+	)
 }
 
 func aggregateAMTMeasurements(measures []*SummaryAMT, id string) (*SummaryAggregateAMT, error) {
@@ -255,6 +526,10 @@ type SummaryHAMT struct {
 	Total           int
 }
 
+func (s *SummaryHAMT) Print() {
+	fmt.Printf("%s, %f, %f, %d\n", s.ID, s.AverageDataSize, s.AverageKeySize, s.Total)
+}
+
 func measureHAMT(ctx context.Context, store cbornode.IpldStore, root cid.Cid, id string) (*SummaryHAMT, error) {
 	summary := SummaryHAMT{ID: id}
 
@@ -295,6 +570,15 @@ type SummaryAggregateHAMT struct {
 	AverageTotal    float64
 	MinTotalForHAMT int
 	MaxTotalForHAMT int
+}
+
+func (s *SummaryAggregateHAMT) Print() {
+	fmt.Printf(
+		"%s, %f, %f, %f, %f, %f, %f, %f, %d, %d\n",
+		s.ID, s.AverageDataSize, s.MinAverageDataSizeForHAMT, s.MaxAverageDataSizeForHAMT,
+		s.AverageKeySize, s.MinAverageKeySizeForHAMT, s.MaxAverageKeySizeForHAMT,
+		s.AverageTotal, s.MinTotalForHAMT, s.MaxTotalForHAMT,
+	)
 }
 
 func aggregateHAMTMeasurements(measures []*SummaryHAMT, id string) (*SummaryAggregateHAMT, error) {

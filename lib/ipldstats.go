@@ -80,7 +80,7 @@ func PrintIpldStats(ctx context.Context, store cbornode.IpldStore, tree *states2
 
 	dbeHist := Histogram{
 		bins:    make(map[int64]int64),
-		binSize: 100,
+		binSize: 1,
 	}
 
 	dobe, err := adt.AsMap(adt.WrapStore(ctx, store), marketState.DealOpsByEpoch)

@@ -711,7 +711,7 @@ func (h *Histogram) print() {
 	fmt.Printf("bin start,frequency\n")
 	for _, key := range keys {
 		binStart := key * h.binSize // start value point of bin
-		fmt.Print("%d, %d\n", binStart, h.bins[key])
+		fmt.Printf("%d, %d\n", binStart, h.bins[key])
 	}
 
 }

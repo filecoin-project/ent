@@ -9,7 +9,6 @@ import (
 	address "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-amt-ipld/v2"
 	"github.com/filecoin-project/go-hamt-ipld/v2"
-	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/specs-actors/v2/actors/builtin"
 	"github.com/filecoin-project/specs-actors/v2/actors/builtin/market"
@@ -25,10 +24,10 @@ import (
 )
 
 func PrintIpldStats(ctx context.Context, store cbornode.IpldStore, tree *states2.Tree, verbose bool) error {
-	// var hamtSummaries []*SummaryHAMT
-	// var hamtAggrSummaries []*SummaryAggregateHAMT
-	// var amtSummaries []*SummaryAMT
-	// var amtAggrSummaries []*SummaryAggregateAMT
+	var hamtSummaries []*SummaryHAMT
+	var hamtAggrSummaries []*SummaryAggregateHAMT
+	var amtSummaries []*SummaryAMT
+	var amtAggrSummaries []*SummaryAggregateAMT
 
 	// Init
 	// if verbose {
@@ -51,7 +50,7 @@ func PrintIpldStats(ctx context.Context, store cbornode.IpldStore, tree *states2
 	// 	hamtSummaries = append(hamtSummaries, summary)
 	// }
 
-	// Power
+	// // Power
 	// if verbose {
 	// 	fmt.Printf("Power\n")
 	// }
@@ -62,49 +61,10 @@ func PrintIpldStats(ctx context.Context, store cbornode.IpldStore, tree *states2
 	// hamtSummaries = append(hamtSummaries, powerHAMTSummaries...)
 	// amtAggrSummaries = append(amtAggrSummaries, powerAggrAMTSummaries...)
 
-	// Market
-	if verbose {
-		fmt.Printf("Market\n")
-	}
-	marketActor, found, err := tree.GetActor(builtin.StorageMarketActorAddr)
-	if !found {
-		return xerrors.Errorf("market actor not found")
-	}
-	if err != nil {
-		return err
-	}
-	var marketState market.State
-	if err := store.Get(ctx, marketActor.Head, &marketState); err != nil {
-		return err
-	}
-
-	dbeHist := Histogram{
-		bins:    make(map[int64]int64),
-		binSize: 1,
-	}
-
-	dobe, err := adt.AsMap(adt.WrapStore(ctx, store), marketState.DealOpsByEpoch)
-	if err != nil {
-		return err
-	}
-	var dealSet cbg.CborCid
-	err = dobe.ForEach(&dealSet, func(e string) error {
-		epoch, err := abi.ParseUIntKey(e)
-		if err != nil {
-			return err
-		}
-		measure, err := measureHAMT(ctx, store, cid.Cid(dealSet), "market.DealOpsByEpochLayer2")
-		if err != nil {
-			return err
-		}
-		dbeHist.add(int64(epoch), int64(measure.Total))
-
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	dbeHist.print()
+	// // Market
+	// if verbose {
+	// 	fmt.Printf("Market\n")
+	// }
 
 	// marketHAMTSummaries, marketAggrHAMTSummaries, marketAMTSummaries, err := marketStats(ctx, store, tree)
 	// if err != nil {
@@ -116,57 +76,59 @@ func PrintIpldStats(ctx context.Context, store cbornode.IpldStore, tree *states2
 
 	// Miner
 
-	// activeAddrs, totalClaims, err := activeMiners(ctx, store, tree)
-	// if err != nil {
-	// 	return err
-	// }
-	// if verbose {
-	// 	fmt.Printf("Miner, %d to go\n", len(activeAddrs))
-	// }
-	// minerAggrHAMTSummaries, minerAggrAMTSummaries, err := minerStats(ctx, store, tree, activeAddrs, verbose)
-	// if err != nil {
-	// 	return err
-	// }
-	// hamtAggrSummaries = append(hamtAggrSummaries, minerAggrHAMTSummaries...)
-	// amtAggrSummaries = append(amtAggrSummaries, minerAggrAMTSummaries...)
+	activeAddrs, _, err := activeMiners(ctx, store, tree)
+	if err != nil {
+		return err
+	}
+	if verbose {
+		fmt.Printf("Miner, %d to go\n", len(activeAddrs))
+	}
+	minerAggrHAMTSummaries, minerAggrAMTSummaries, err := minerStats(ctx, store, tree, activeAddrs, verbose)
+	if err != nil {
+		return err
+	}
+	hamtAggrSummaries = append(hamtAggrSummaries, minerAggrHAMTSummaries...)
+	amtAggrSummaries = append(amtAggrSummaries, minerAggrAMTSummaries...)
 
 	// // Print stats
-	// sort.Slice(hamtSummaries, func(i int, j int) bool {
-	// 	return hamtSummaries[i].ID < hamtSummaries[j].ID
-	// })
-	// sort.Slice(amtSummaries, func(i int, j int) bool {
-	// 	return amtSummaries[i].ID < amtSummaries[j].ID
-	// })
-	// sort.Slice(hamtAggrSummaries, func(i int, j int) bool {
-	// 	return hamtAggrSummaries[i].ID < hamtAggrSummaries[j].ID
-	// })
-	// sort.Slice(amtAggrSummaries, func(i int, j int) bool {
-	// 	return amtAggrSummaries[i].ID < amtAggrSummaries[j].ID
-	// })
+	sort.Slice(hamtSummaries, func(i int, j int) bool {
+		return hamtSummaries[i].ID < hamtSummaries[j].ID
+	})
+	sort.Slice(amtSummaries, func(i int, j int) bool {
+		return amtSummaries[i].ID < amtSummaries[j].ID
+	})
+	sort.Slice(hamtAggrSummaries, func(i int, j int) bool {
+		return hamtAggrSummaries[i].ID < hamtAggrSummaries[j].ID
+	})
+	sort.Slice(amtAggrSummaries, func(i int, j int) bool {
+		return amtAggrSummaries[i].ID < amtAggrSummaries[j].ID
+	})
 	// fmt.Printf("Total Miners: %d, Active Miners: %d\n", totalClaims, len(activeAddrs))
 	// fmt.Printf("Singleton AMTs\n")
 	// fmt.Printf("ID, AverageDataSize, KeyRange, Total\n")
 	// for _, summary := range amtSummaries {
-	// 	summary.Print()
+	// 	//		summary.Print()
 	// }
 
 	// fmt.Printf("Aggregate AMTs\n")
 	// fmt.Printf("ID, AverageDataSize, MinAvgDataSize, MaxAvgDataSize, AverageKeyRange, MinKeyRange, MaxKeyRange, AverageTotal, MinTotal, MaxTotal")
-	// for _, summary := range amtAggrSummaries {
-	// 	summary.Print()
-	// }
+	for _, summary := range amtAggrSummaries {
+		//		summary.Print()
+		summary.PrintHist()
+	}
 
 	// fmt.Printf("Singleton HAMTs\n")
 	// fmt.Printf("ID, AverageDataSize, AverageKeySize, Total\n")
 	// for _, summary := range hamtSummaries {
-	// 	summary.Print()
+	// 	//		summary.Print()
 	// }
 
 	// fmt.Printf("Aggregate HAMTs\n")
 	// fmt.Printf("ID, AverageDataSize, MinAvgDataSize, MaxAvgDataSize, AverageKeySize, MinAvgKeySize, MaxAvgKeySize, AverageTotal, MinTotal, MaxTotal\n")
-	// for _, summary := range hamtAggrSummaries {
-	// 	summary.Print()
-	// }
+	for _, summary := range hamtAggrSummaries {
+		//		summary.Print()
+		summary.PrintHist()
+	}
 
 	return nil
 }
@@ -516,6 +478,10 @@ type SummaryAggregateAMT struct {
 	AverageTotal   float64
 	MinTotalForAMT int
 	MaxTotalForAMT int
+
+	SizeHist     *Histogram
+	DataSizeHist *Histogram
+	KeyRangeHist *Histogram
 }
 
 func (s *SummaryAggregateAMT) Print() {
@@ -527,6 +493,20 @@ func (s *SummaryAggregateAMT) Print() {
 	)
 }
 
+func (s *SummaryAggregateAMT) PrintHist() {
+	if s.SizeHist != nil && s.DataSizeHist != nil && s.KeyRangeHist != nil {
+		fmt.Printf("Hist for %s\n", s.ID)
+		fmt.Printf("Totals\n")
+		fmt.Printf("Zero Count: %d\n", s.SizeHist.zeroCnt)
+		s.SizeHist.print()
+		fmt.Printf("DataSize\n")
+		s.DataSizeHist.print()
+		fmt.Printf("KeyRange\n")
+		s.KeyRangeHist.print()
+		fmt.Printf("--------------------------------------------------------------------------------\n")
+	}
+}
+
 func aggregateAMTMeasurements(measures []*SummaryAMT, id string) (*SummaryAggregateAMT, error) {
 	dataSizeMin := float64(math.MaxFloat64)
 	dataSizeMax := float64(0)
@@ -535,6 +515,22 @@ func aggregateAMTMeasurements(measures []*SummaryAMT, id string) (*SummaryAggreg
 	totalMin := int(math.MaxInt32)
 	totalMax := int(0)
 	summary := SummaryAggregateAMT{ID: id}
+
+	_, doHists := amtHistSizes[id]
+	if doHists {
+		summary.SizeHist = &Histogram{
+			binSize: amtHistSizes[id].sizeBinSize,
+			bins:    make(map[int64]int64),
+		}
+		summary.DataSizeHist = &Histogram{
+			binSize: amtHistSizes[id].dataSizeBinSize,
+			bins:    make(map[int64]int64),
+		}
+		summary.KeyRangeHist = &Histogram{
+			binSize: amtHistSizes[id].keyRangeBinSize,
+			bins:    make(map[int64]int64),
+		}
+	}
 
 	for _, measure := range measures {
 		if measure.ID != id { // only include matches
@@ -561,6 +557,12 @@ func aggregateAMTMeasurements(measures []*SummaryAMT, id string) (*SummaryAggreg
 		summary.AverageDataSize += measure.AverageDataSize
 		summary.AverageKeyRange += float64(measure.KeyRange)
 		summary.AverageTotal += float64(measure.Total)
+
+		if doHists {
+			summary.SizeHist.add(float64(measure.Total), int64(1))
+			summary.DataSizeHist.add(measure.AverageDataSize, int64(1))
+			summary.KeyRangeHist.add(float64(measure.KeyRange), int64(1))
+		}
 	}
 
 	summary.AverageDataSize = summary.AverageDataSize / float64(len(measures))
@@ -626,6 +628,10 @@ type SummaryAggregateHAMT struct {
 	AverageTotal    float64
 	MinTotalForHAMT int
 	MaxTotalForHAMT int
+
+	SizeHist     *Histogram
+	DataSizeHist *Histogram
+	KeySizeHist  *Histogram
 }
 
 func (s *SummaryAggregateHAMT) Print() {
@@ -637,6 +643,19 @@ func (s *SummaryAggregateHAMT) Print() {
 	)
 }
 
+func (s *SummaryAggregateHAMT) PrintHist() {
+	if s.SizeHist != nil && s.DataSizeHist != nil && s.KeySizeHist != nil {
+		fmt.Printf("Hist for %s\n", s.ID)
+		fmt.Printf("Totals\n")
+		fmt.Printf("Zero Count: %d\n", s.SizeHist.zeroCnt)
+		s.SizeHist.print()
+		fmt.Printf("DataSize\n")
+		s.DataSizeHist.print()
+		fmt.Printf("KeySize\n")
+		s.KeySizeHist.print()
+	}
+}
+
 func aggregateHAMTMeasurements(measures []*SummaryHAMT, id string) (*SummaryAggregateHAMT, error) {
 	dataSizeMin := float64(math.MaxFloat64)
 	dataSizeMax := float64(0)
@@ -645,6 +664,23 @@ func aggregateHAMTMeasurements(measures []*SummaryHAMT, id string) (*SummaryAggr
 	totalMin := int(math.MaxInt32)
 	totalMax := int(0)
 	summary := SummaryAggregateHAMT{ID: id}
+
+	doHists := id == "miner.PreCommittedSectors"
+
+	if doHists {
+		summary.SizeHist = &Histogram{
+			binSize: 50,
+			bins:    make(map[int64]int64),
+		}
+		summary.DataSizeHist = &Histogram{
+			binSize: 50,
+			bins:    make(map[int64]int64),
+		}
+		summary.KeySizeHist = &Histogram{
+			binSize: 1,
+			bins:    make(map[int64]int64),
+		}
+	}
 
 	for _, measure := range measures {
 		if measure.ID != id { // only include matches
@@ -671,6 +707,11 @@ func aggregateHAMTMeasurements(measures []*SummaryHAMT, id string) (*SummaryAggr
 		summary.AverageDataSize += measure.AverageDataSize
 		summary.AverageKeySize += measure.AverageKeySize
 		summary.AverageTotal += float64(measure.Total)
+		if doHists {
+			summary.SizeHist.add(float64(measure.Total), int64(1))
+			summary.DataSizeHist.add(measure.AverageDataSize, int64(1))
+			summary.KeySizeHist.add(float64(measure.AverageKeySize), int64(1))
+		}
 	}
 
 	summary.AverageDataSize = summary.AverageDataSize / float64(len(measures))
@@ -685,16 +726,55 @@ func aggregateHAMTMeasurements(measures []*SummaryHAMT, id string) (*SummaryAggr
 	return &summary, nil
 }
 
+type histSizes struct {
+	sizeBinSize     int64
+	dataSizeBinSize int64
+	keyRangeBinSize int64
+}
+
+var amtHistSizes = map[string]histSizes{
+	"miner.Sectors": histSizes{
+		sizeBinSize:     1000,
+		dataSizeBinSize: 50,
+		keyRangeBinSize: 10000,
+	},
+	"miner.DeadlinePartitions": histSizes{
+		sizeBinSize:     1,
+		dataSizeBinSize: 100,
+		keyRangeBinSize: 1,
+	},
+	"miner.PartitionExpirationEpochs": histSizes{
+		dataSizeBinSize: 100,
+		keyRangeBinSize: 100000,
+		sizeBinSize:     5,
+	},
+	"miner.DeadlineExpirationEpochs": histSizes{
+		dataSizeBinSize: 1,
+		keyRangeBinSize: 100000,
+		sizeBinSize:     5,
+	},
+	"miner.PreCommittedSectorsExpiry": histSizes{
+		dataSizeBinSize: 20,
+		keyRangeBinSize: 100,
+		sizeBinSize:     10,
+	},
+}
+
 type Histogram struct {
 	binSize int64
 	bins    map[int64]int64
+	zeroCnt int64
 }
 
-func (h *Histogram) add(v int64, f int64) {
+func (h *Histogram) add(vf float64, f int64) {
+	v := int64(vf)
 	if _, ok := h.bins[v/h.binSize]; !ok {
 		h.bins[v/h.binSize] = 0
 	}
 	h.bins[v/h.binSize] += f
+	if vf == float64(0) {
+		h.zeroCnt++
+	}
 }
 
 func (h *Histogram) print() {
@@ -707,7 +787,6 @@ func (h *Histogram) print() {
 	sort.Slice(keys, func(i int, j int) bool {
 		return keys[i] < keys[j]
 	})
-
 	fmt.Printf("bin start,frequency\n")
 	for _, key := range keys {
 		binStart := key * h.binSize // start value point of bin

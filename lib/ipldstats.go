@@ -669,7 +669,7 @@ func aggregateHAMTMeasurements(measures []*SummaryHAMT, id string) (*SummaryAggr
 
 	if doHists {
 		summary.SizeHist = &Histogram{
-			binSize: 50,
+			binSize: 10,
 			bins:    make(map[int64]int64),
 		}
 		summary.DataSizeHist = &Histogram{
@@ -734,7 +734,7 @@ type histSizes struct {
 
 var amtHistSizes = map[string]histSizes{
 	"miner.Sectors": histSizes{
-		sizeBinSize:     1000,
+		sizeBinSize:     100,
 		dataSizeBinSize: 50,
 		keyRangeBinSize: 10000,
 	},

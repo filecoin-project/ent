@@ -20,6 +20,8 @@ import (
 	builtin2 "github.com/filecoin-project/specs-actors/v2/actors/builtin"
 	migration4 "github.com/filecoin-project/specs-actors/v2/actors/migration/nv4"
 	migration7 "github.com/filecoin-project/specs-actors/v2/actors/migration/nv7"
+	migration9 "github.com/filecoin-project/specs-actors/v3/actors/migration/nv9"
+
 	states2 "github.com/filecoin-project/specs-actors/v2/actors/states"
 	cid "github.com/ipfs/go-cid"
 	cbornode "github.com/ipfs/go-ipld-cbor"
@@ -170,7 +172,7 @@ func runMigrateOneCmd(c *cli.Context) error {
 		return err
 	}
 	start := time.Now()
-	stateRootOut, err := migration7.MigrateStateTree(c.Context, store, stateRootIn, height, migration7.DefaultConfig())
+	stateRootOut, err := migration9.MigrateStateTree(c.Context, store, stateRootIn, height, migration9.Config{MaxWorkers: 8})
 	duration := time.Since(start)
 	if err != nil {
 		return err

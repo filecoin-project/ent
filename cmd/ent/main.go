@@ -21,6 +21,7 @@ import (
 	migration4 "github.com/filecoin-project/specs-actors/v2/actors/migration/nv4"
 	migration7 "github.com/filecoin-project/specs-actors/v2/actors/migration/nv7"
 	states2 "github.com/filecoin-project/specs-actors/v2/actors/states"
+	migration9 "github.com/filecoin-project/specs-actors/v3/actors/migration/nv9"
 	cid "github.com/ipfs/go-cid"
 	cbornode "github.com/ipfs/go-ipld-cbor"
 	"github.com/urfave/cli/v2"
@@ -34,8 +35,18 @@ var migrateCmd = &cli.Command{
 	Description: "migrate a filecoin state root",
 	Subcommands: []*cli.Command{
 		{
+			Name:   "one",
+			Usage:  "migrate a single state tree from v2 to v3",
+			Action: runMigrateV2ToV3Cmd,
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "validate"},
+				&cli.StringFlag{Name: "read-cache"},
+				&cli.BoolFlag{Name: "write-cache"},
+			},
+		},
+		{
 			Name:   "v1->v2",
-			Usage:  "migrate a single state tree",
+			Usage:  "migrate a single state tree from v1 to v2",
 			Action: runMigrateV1ToV2Cmd,
 			Flags: []cli.Flag{
 				&cli.BoolFlag{Name: "validate"},
@@ -48,6 +59,14 @@ var validateCmd = &cli.Command{
 	Name:        "validate",
 	Description: "validate a statetree by checking lots of invariants",
 	Subcommands: []*cli.Command{
+		{
+			Name:   "one",
+			Usage:  "validation a single v3 state tree",
+			Action: runValidateV2Cmd,
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "unwrapped"},
+			},
+		},
 		{
 			Name:   "v2",
 			Usage:  "validate a single v2 state tree",
@@ -115,6 +134,70 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func runMigrateV2ToV3Cmd(c *cli.Context) error {
+	if c.Args().Len() != 2 {
+		return xerrors.Errorf("not enough args, need state root to migrate and height of state")
+	}
+	cleanUp, err := cpuProfile(c)
+	if err != nil {
+		return err
+	}
+	defer cleanUp()
+
+	log := lib.NewMigrationLogger(os.Stdout)
+
+	stateRootInRaw, err := cid.Decode(c.Args().First())
+	if err != nil {
+		return err
+	}
+	hRaw, err := strconv.Atoi(c.Args().Get(1))
+	if err != nil {
+		return err
+	}
+	height := abi.ChainEpoch(int64(hRaw))
+	chn := lib.Chain{}
+
+	// Migrate State
+	store, err := chn.LoadCborStore(c.Context)
+	if err != nil {
+		return err
+	}
+	stateRootIn, err := loadStateRoot(c.Context, store, stateRootInRaw)
+	if err != nil {
+		return err
+	}
+	start := time.Now()
+	cfg := migration9.Config{
+		MaxWorkers:        8,
+		JobQueueSize:      100,
+		ResultQueueSize:   10,
+		ProgressLogPeriod: 5 * time.Minute,
+	}
+	stateRootOut, err := migration9.MigrateStateTree(c.Context, store, stateRootIn, height, cfg, log)
+	duration := time.Since(start)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s => %s -- %v\n", stateRootIn, stateRootOut, duration)
+
+	// Measure flush time
+	writeStart := time.Now()
+	if err := chn.FlushBufferedState(c.Context, stateRootOut); err != nil {
+		return xerrors.Errorf("failed to flush state tree to disk: %w\n", err)
+	}
+	writeDuration := time.Since(writeStart)
+	fmt.Printf("%s buffer flush time: %v\n", stateRootOut, writeDuration)
+
+	if c.Bool("validate") {
+		err := validateV2(c.Context, store, height, stateRootOut, false)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func runMigrateV1ToV2Cmd(c *cli.Context) error {

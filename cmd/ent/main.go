@@ -31,24 +31,13 @@ import (
 
 var migrateCmd = &cli.Command{
 	Name:        "migrate",
-	Description: "migrate a filecoin v1 state root to v2",
+	Description: "migrate a filecoin state root",
 	Subcommands: []*cli.Command{
 		{
-			Name:   "one",
+			Name:   "v1->v2",
 			Usage:  "migrate a single state tree",
-			Action: runMigrateOneCmd,
+			Action: runMigrateV1ToV2Cmd,
 			Flags: []cli.Flag{
-				&cli.StringFlag{Name: "preload"},
-				&cli.BoolFlag{Name: "validate"},
-			},
-		},
-		{
-			Name:   "chain",
-			Usage:  "migrate all state trees from given chain head to genesis",
-			Action: runMigrateChainCmd,
-			Flags: []cli.Flag{
-				&cli.StringFlag{Name: "preload"},
-				&cli.IntFlag{Name: "skip", Aliases: []string{"k"}},
 				&cli.BoolFlag{Name: "validate"},
 			},
 		},
@@ -62,9 +51,8 @@ var validateCmd = &cli.Command{
 		{
 			Name:   "v2",
 			Usage:  "validate a single v2 state tree",
-			Action: runValidateCmd,
+			Action: runValidateV2Cmd,
 			Flags: []cli.Flag{
-				&cli.StringFlag{Name: "preload"},
 				&cli.BoolFlag{Name: "unwrapped"},
 			},
 		},
@@ -73,7 +61,7 @@ var validateCmd = &cli.Command{
 
 var infoCmd = &cli.Command{
 	Name:        "info",
-	Description: "report blockchain and state info",
+	Description: "report blockchain and state info on latest state version",
 	Subcommands: []*cli.Command{
 		{
 			Name:        "roots",
@@ -90,15 +78,8 @@ var infoCmd = &cli.Command{
 			Description: "display all miner actor locked funds and available balances",
 			Action:      runBalancesCmd,
 		},
-	},
-}
-
-var exportCmd = &cli.Command{
-	Name:        "export",
-	Description: "export high-cardinality collections",
-	Subcommands: []*cli.Command{
 		{
-			Name:        "sectors",
+			Name:        "export-sectors",
 			Description: "exports all on-chain sectors",
 			Action:      runExportSectorsCmd,
 		},
@@ -124,7 +105,6 @@ func main() {
 			migrateCmd,
 			validateCmd,
 			infoCmd,
-			exportCmd,
 		},
 	}
 	sort.Sort(cli.CommandsByName(app.Commands))
@@ -137,7 +117,7 @@ func main() {
 	}
 }
 
-func runMigrateOneCmd(c *cli.Context) error {
+func runMigrateV1ToV2Cmd(c *cli.Context) error {
 	if c.Args().Len() != 2 {
 		return xerrors.Errorf("not enough args, need state root to migrate and height of state")
 	}
@@ -156,9 +136,6 @@ func runMigrateOneCmd(c *cli.Context) error {
 	}
 	height := abi.ChainEpoch(int64(hRaw))
 	chn := lib.Chain{}
-
-	preloadStr := c.String("preload")
-	maybePreload(c.Context, &chn, preloadStr)
 
 	// Migrate State
 	store, err := chn.LoadCborStore(c.Context)
@@ -186,7 +163,7 @@ func runMigrateOneCmd(c *cli.Context) error {
 	fmt.Printf("%s buffer flush time: %v\n", stateRootOut, writeDuration)
 
 	if c.Bool("validate") {
-		err := validate(c.Context, store, height, stateRootOut, false)
+		err := validateV2(c.Context, store, height, stateRootOut, false)
 		if err != nil {
 			return err
 		}
@@ -195,73 +172,7 @@ func runMigrateOneCmd(c *cli.Context) error {
 	return nil
 }
 
-func runMigrateChainCmd(c *cli.Context) error {
-	if !c.Args().Present() {
-		return xerrors.Errorf("not enough args, need chain head to migrate")
-	}
-	cleanUp, err := cpuProfile(c)
-	if err != nil {
-		return err
-	}
-	defer cleanUp()
-	bcid, err := cid.Decode(c.Args().First())
-	if err != nil {
-		return err
-	}
-	chn := lib.Chain{}
-
-	preloadStr := c.String("preload")
-	maybePreload(c.Context, &chn, preloadStr)
-
-	iter, err := chn.NewChainStateIterator(c.Context, bcid)
-	if err != nil {
-		return err
-	}
-	store, err := chn.LoadCborStore(c.Context)
-	if err != nil {
-		return err
-	}
-	k := c.Int("skip")
-	for !iter.Done() {
-		val := iter.Val()
-		if k == 0 || val.Height%int64(k) == int64(0) { // skip every k epochs
-			start := time.Now()
-			height := abi.ChainEpoch(val.Height)
-			stateRoot, err := loadStateRoot(c.Context, store, val.State)
-			if err != nil {
-				return err
-			}
-			stateRootOut, err := migration7.MigrateStateTree(c.Context, store, stateRoot, height, migration7.DefaultConfig())
-			duration := time.Since(start)
-			if err != nil {
-				fmt.Printf("%d -- %s => %s !! %v\n", val.Height, val.State, stateRootOut, err)
-			} else {
-				fmt.Printf("%d -- %s => %s -- %v\n", val.Height, val.State, stateRootOut, duration)
-			}
-			writeStart := time.Now()
-			if err := chn.FlushBufferedState(c.Context, stateRootOut); err != nil {
-				fmt.Printf("%s buffer flush failed: %s\n", err, stateRootOut)
-			}
-			writeDuration := time.Since(writeStart)
-			fmt.Printf("%s buffer flush time: %v\n", stateRootOut, writeDuration)
-
-			// Optional Post-Migration State Validation
-			if c.Bool("validate") {
-				err := validate(c.Context, store, height, stateRootOut, false)
-				if err != nil {
-					return err
-				}
-			}
-		}
-
-		if err := iter.Step(c.Context); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func runValidateCmd(c *cli.Context) error {
+func runValidateV2Cmd(c *cli.Context) error {
 	if c.Args().Len() != 2 {
 		return xerrors.Errorf("wrong numberof args, need state root to migrate and height")
 	}
@@ -290,7 +201,7 @@ func runValidateCmd(c *cli.Context) error {
 		wrapped = false
 	}
 
-	return validate(c.Context, store, height, stateRoot, wrapped)
+	return validateV2(c.Context, store, height, stateRoot, wrapped)
 }
 
 func runRootsCmd(c *cli.Context) error {
@@ -404,7 +315,7 @@ func runExportSectorsCmd(c *cli.Context) error {
 		return err
 	}
 
-	tree, err := loadStateTree(c.Context, store, stateRootIn)
+	tree, err := loadStateTreeV2(c.Context, store, stateRootIn)
 	if err != nil {
 		return err
 	}
@@ -460,28 +371,11 @@ func cpuProfile(c *cli.Context) (func(), error) {
 	}, nil
 }
 
-func maybePreload(ctx context.Context, chn *lib.Chain, preloadStr string) error {
-	if preloadStr == "" { // no preload
-		return nil
-	}
-
-	preloadStateRoot, err := cid.Decode(preloadStr)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("start preload of %s\n", preloadStateRoot)
-	loadStart := time.Now()
-	err = chn.LoadToReadOnlyBuffer(ctx, preloadStateRoot)
-	loadDuration := time.Since(loadStart)
-	fmt.Printf("%s preload time: %v\n", preloadStateRoot, loadDuration)
-	return err
-}
-
-func validate(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.ChainEpoch, stateRoot cid.Cid, wrapped bool) error {
+func validateV2(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.ChainEpoch, stateRoot cid.Cid, wrapped bool) error {
 	var tree *states2.Tree
 	var err error
 	if wrapped {
-		tree, err = loadStateTree(ctx, store, stateRoot)
+		tree, err = loadStateTreeV2(ctx, store, stateRoot)
 		if err != nil {
 			return xerrors.Errorf("failed to load tree: %w", err)
 		}
@@ -506,7 +400,7 @@ func validate(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.Chai
 	return nil
 }
 
-func loadStateTree(ctx context.Context, store cbornode.IpldStore, stateRoot cid.Cid) (*states2.Tree, error) {
+func loadStateTreeV2(ctx context.Context, store cbornode.IpldStore, stateRoot cid.Cid) (*states2.Tree, error) {
 	adtStore := adt0.WrapStore(ctx, store)
 	stateRoot, err := loadStateRoot(ctx, store, stateRoot)
 	if err != nil {

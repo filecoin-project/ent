@@ -175,6 +175,16 @@ func runMigrateV2ToV3Cmd(c *cli.Context) error {
 		ProgressLogPeriod: 5 * time.Minute,
 	}
 	cache := migration9.NewMemMigrationCache()
+	if cacheStateRootStr := c.String("read-cache"); cacheStateRootStr != "" {
+		cacheStateRoot, err := cid.Decode(cacheStateRootStr)
+		if err != nil {
+			return err
+		}
+		cache, err = lib.LoadCache(cacheStateRoot)
+		if err != nil {
+			return err
+		}
+	}
 
 	start := time.Now()
 	stateRootOut, err := migration9.MigrateStateTree(c.Context, store, stateRootIn, height, cfg, log, cache)

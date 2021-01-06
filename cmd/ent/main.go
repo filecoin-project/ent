@@ -168,14 +168,16 @@ func runMigrateV2ToV3Cmd(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	start := time.Now()
 	cfg := migration9.Config{
 		MaxWorkers:        8,
 		JobQueueSize:      100,
 		ResultQueueSize:   10,
 		ProgressLogPeriod: 5 * time.Minute,
 	}
-	stateRootOut, err := migration9.MigrateStateTree(c.Context, store, stateRootIn, height, cfg, log)
+	cache := migration9.NewMemMigrationCache()
+
+	start := time.Now()
+	stateRootOut, err := migration9.MigrateStateTree(c.Context, store, stateRootIn, height, cfg, log, cache)
 	duration := time.Since(start)
 	if err != nil {
 		return err
@@ -189,6 +191,15 @@ func runMigrateV2ToV3Cmd(c *cli.Context) error {
 	}
 	writeDuration := time.Since(writeStart)
 	fmt.Printf("%s buffer flush time: %v\n", stateRootOut, writeDuration)
+
+	if c.Bool("write-cache") {
+		persistStart := time.Now()
+		if err := lib.PersistCache(stateRootIn, cache); err != nil {
+			return err
+		}
+		persistDuration := time.Since(persistStart)
+		fmt.Printf("%s cache write time: %v\n", stateRootIn, persistDuration)
+	}
 
 	if c.Bool("validate") {
 		err := validateV2(c.Context, store, height, stateRootOut, false)

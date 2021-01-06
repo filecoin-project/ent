@@ -15,8 +15,8 @@ import (
 
 var lotusPath = "~/.lotus/datastore/chain"
 
-// currently unused but can be used for persisting data
-var entPath = "~/.ent/datastore/chain"
+// persist migrated chain state
+var entChainPath = "~/.ent/datastore/chain"
 
 type Chain struct {
 	cachedBs *BufferedBlockstore
@@ -38,7 +38,7 @@ func (c *Chain) loadBufferedBstore(ctx context.Context) (*BufferedBlockstore, er
 		return c.cachedBs, nil
 	}
 	var err error
-	c.cachedBs, err = NewBufferedBlockstore(lotusPath, entPath)
+	c.cachedBs, err = NewBufferedBlockstore(lotusPath, entChainPath)
 	return c.cachedBs, err
 }
 

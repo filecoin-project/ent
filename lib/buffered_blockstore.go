@@ -32,7 +32,7 @@ func NewBufferedBlockstore(readLotusPath, writeEntPath string) (*BufferedBlockst
 	if err != nil {
 		return nil, err
 	}
-	entExpPath, err := homedir.Expand(entPath)
+	entExpPath, err := homedir.Expand(entChainPath)
 	if err != nil {
 		return nil, err
 	}

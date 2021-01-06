@@ -10,7 +10,7 @@ import (
 )
 
 // persist and load migration caches
-var entCachePath = "~/.ent/cache"
+var entCachePath = "~/.ent/cache/"
 
 func PersistCache(stateRoot cid.Cid, cache migration9.MemMigrationCache) error {
 	cacheFileName, err := homedir.Expand(entCachePath + stateRoot.String())

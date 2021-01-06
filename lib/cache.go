@@ -13,6 +13,15 @@ import (
 var entCachePath = "~/.ent/cache/"
 
 func PersistCache(stateRoot cid.Cid, cache migration9.MemMigrationCache) error {
+	// make ent cache directory if it doesn't already exist
+	cacheDirName, err := homedir.Expand(entCachePath)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(cacheDirName, 0644); err != nil {
+		return err
+	}
+
 	cacheFileName, err := homedir.Expand(entCachePath + stateRoot.String())
 	if err != nil {
 		return err

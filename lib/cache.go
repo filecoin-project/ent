@@ -51,7 +51,7 @@ func LoadCache(stateRoot cid.Cid) (migration9.MemMigrationCache, error) {
 	cacheDec := gob.NewDecoder(f)
 
 	persistMap := make(map[migration9.MigrationCacheKey]cid.Cid)
-	err = cacheDec.Decode(persistMap)
+	err = cacheDec.Decode(&persistMap)
 
 	cache := migration9.NewMemMigrationCache()
 	for k, v := range persistMap {

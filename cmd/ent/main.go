@@ -173,8 +173,8 @@ func runMigrateV2ToV3Cmd(c *cli.Context) error {
 	}
 	cfg := migration9.Config{
 		MaxWorkers:        8,
-		JobQueueSize:      100,
-		ResultQueueSize:   10,
+		JobQueueSize:      1000,
+		ResultQueueSize:   100,
 		ProgressLogPeriod: 5 * time.Minute,
 	}
 	cache := migration9.NewMemMigrationCache()

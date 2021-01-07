@@ -31,7 +31,12 @@ func PersistCache(stateRoot cid.Cid, cache migration9.MemMigrationCache) error {
 		return err
 	}
 	cacheEnc := gob.NewEncoder(f)
-	return cacheEnc.Encode(cache)
+	persistMap := make(map[migration9.MigrationCacheKey]cid.Cid)
+	cache.MigrationMap.Range(func(k, v interface{}) bool {
+		persistMap[k.(migration9.MigrationCacheKey)] = v.(cid.Cid)
+		return true
+	})
+	return cacheEnc.Encode(persistMap)
 }
 
 func LoadCache(stateRoot cid.Cid) (migration9.MemMigrationCache, error) {
@@ -44,7 +49,13 @@ func LoadCache(stateRoot cid.Cid) (migration9.MemMigrationCache, error) {
 		return migration9.MemMigrationCache{}, err
 	}
 	cacheDec := gob.NewDecoder(f)
-	var cache migration9.MemMigrationCache
-	err = cacheDec.Decode(&cache)
+
+	persistMap := make(map[migration9.MigrationCacheKey]cid.Cid)
+	err = cacheDec.Decode(persistMap)
+
+	cache := migration9.NewMemMigrationCache()
+	for k, v := range persistMap {
+		cache.MigrationMap.Store(k, v)
+	}
 	return cache, err
 }

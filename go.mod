@@ -11,6 +11,7 @@ require (
 	github.com/filecoin-project/go-state-types v0.0.0-20201102161440-c8033295a1fc
 	github.com/filecoin-project/specs-actors v0.9.13
 	github.com/filecoin-project/specs-actors/v2 v2.3.0
+	github.com/filecoin-project/specs-actors/v3 v3.0.0-20210107192928-c91611bb6002
 	github.com/golang/protobuf v1.4.2 // indirect
 	github.com/golang/snappy v0.0.2-0.20190904063534-ff6b7dc882cf // indirect
 	github.com/ipfs/go-block-format v0.0.2

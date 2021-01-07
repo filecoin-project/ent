@@ -10,11 +10,11 @@ import (
 )
 
 // persist and load migration caches
-var entCachePath = "~/.ent/cache/"
+var EntCachePath = "~/.ent/cache/"
 
 func PersistCache(stateRoot cid.Cid, cache migration9.MemMigrationCache) error {
 	// make ent cache directory if it doesn't already exist
-	cacheDirName, err := homedir.Expand(entCachePath[:len(entCachePath)-1])
+	cacheDirName, err := homedir.Expand(EntCachePath[:len(EntCachePath)-1])
 	if err != nil {
 		return err
 	}
@@ -22,7 +22,7 @@ func PersistCache(stateRoot cid.Cid, cache migration9.MemMigrationCache) error {
 		return err
 	}
 
-	cacheFileName, err := homedir.Expand(entCachePath + stateRoot.String())
+	cacheFileName, err := homedir.Expand(EntCachePath + stateRoot.String())
 	if err != nil {
 		return err
 	}
@@ -35,7 +35,7 @@ func PersistCache(stateRoot cid.Cid, cache migration9.MemMigrationCache) error {
 }
 
 func LoadCache(stateRoot cid.Cid) (migration9.MemMigrationCache, error) {
-	cacheFileName, err := homedir.Expand(entCachePath + stateRoot.String())
+	cacheFileName, err := homedir.Expand(EntCachePath + stateRoot.String())
 	if err != nil {
 		return migration9.MemMigrationCache{}, err
 	}

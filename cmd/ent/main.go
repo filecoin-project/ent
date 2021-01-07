@@ -21,7 +21,10 @@ import (
 	migration4 "github.com/filecoin-project/specs-actors/v2/actors/migration/nv4"
 	migration7 "github.com/filecoin-project/specs-actors/v2/actors/migration/nv7"
 	states2 "github.com/filecoin-project/specs-actors/v2/actors/states"
+	builtin3 "github.com/filecoin-project/specs-actors/v3/actors/builtin"
 	migration9 "github.com/filecoin-project/specs-actors/v3/actors/migration/nv9"
+	states3 "github.com/filecoin-project/specs-actors/v3/actors/states"
+	adt3 "github.com/filecoin-project/specs-actors/v3/actors/util/adt"
 	cid "github.com/ipfs/go-cid"
 	cbornode "github.com/ipfs/go-ipld-cbor"
 	"github.com/urfave/cli/v2"
@@ -35,7 +38,7 @@ var migrateCmd = &cli.Command{
 	Description: "migrate a filecoin state root",
 	Subcommands: []*cli.Command{
 		{
-			Name:   "one",
+			Name:   "v3",
 			Usage:  "migrate a single state tree from v2 to v3",
 			Action: runMigrateV2ToV3Cmd,
 			Flags: []cli.Flag{
@@ -45,7 +48,7 @@ var migrateCmd = &cli.Command{
 			},
 		},
 		{
-			Name:   "v1->v2",
+			Name:   "v2",
 			Usage:  "migrate a single state tree from v1 to v2",
 			Action: runMigrateV1ToV2Cmd,
 			Flags: []cli.Flag{
@@ -60,9 +63,9 @@ var validateCmd = &cli.Command{
 	Description: "validate a statetree by checking lots of invariants",
 	Subcommands: []*cli.Command{
 		{
-			Name:   "one",
+			Name:   "v3",
 			Usage:  "validation a single v3 state tree",
-			Action: runValidateV2Cmd,
+			Action: runValidateV3Cmd,
 			Flags: []cli.Flag{
 				&cli.BoolFlag{Name: "unwrapped"},
 			},
@@ -184,6 +187,7 @@ func runMigrateV2ToV3Cmd(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
+		fmt.Printf("read cache from %s/%s\n", lib.EntCachePath, cacheStateRoot)
 	}
 
 	start := time.Now()
@@ -208,11 +212,11 @@ func runMigrateV2ToV3Cmd(c *cli.Context) error {
 			return err
 		}
 		persistDuration := time.Since(persistStart)
-		fmt.Printf("%s cache write time: %v\n", stateRootIn, persistDuration)
+		fmt.Printf("cache written to %s/%s, write time: %v\n", lib.EntCachePath, stateRootIn, persistDuration)
 	}
 
 	if c.Bool("validate") {
-		err := validateV2(c.Context, store, height, stateRootOut, false)
+		err := validateV3(c.Context, store, height, stateRootOut, false)
 		if err != nil {
 			return err
 		}
@@ -274,6 +278,38 @@ func runMigrateV1ToV2Cmd(c *cli.Context) error {
 	}
 
 	return nil
+}
+
+func runValidateV3Cmd(c *cli.Context) error {
+	if c.Args().Len() != 2 {
+		return xerrors.Errorf("wrong numberof args, need state root to migrate and height")
+	}
+	cleanUp, err := cpuProfile(c)
+	if err != nil {
+		return err
+	}
+	defer cleanUp()
+
+	stateRoot, err := cid.Decode(c.Args().First())
+	if err != nil {
+		return err
+	}
+	hRaw, err := strconv.Atoi(c.Args().Get(1))
+	if err != nil {
+		return err
+	}
+	height := abi.ChainEpoch(int64(hRaw))
+	chn := lib.Chain{}
+	store, err := chn.LoadCborStore(c.Context)
+	if err != nil {
+		return err
+	}
+	wrapped := true
+	if c.Bool("unwrapped") {
+		wrapped = false
+	}
+
+	return validateV3(c.Context, store, height, stateRoot, wrapped)
 }
 
 func runValidateV2Cmd(c *cli.Context) error {
@@ -475,6 +511,35 @@ func cpuProfile(c *cli.Context) (func(), error) {
 	}, nil
 }
 
+func validateV3(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.ChainEpoch, stateRoot cid.Cid, wrapped bool) error {
+	var tree *states3.Tree
+	var err error
+	if wrapped {
+		tree, err = loadStateTreeV3(ctx, store, stateRoot)
+		if err != nil {
+			return xerrors.Errorf("failed to load tree: %w", err)
+		}
+	} else {
+		tree, err = states3.LoadTree(adt3.WrapStore(ctx, store), stateRoot)
+		if err != nil {
+			return xerrors.Errorf("failed to load tree: %w", err)
+		}
+	}
+	expectedBalance := builtin3.TotalFilecoin
+	start := time.Now()
+	acc, err := states3.CheckStateInvariants(tree, expectedBalance, priorEpoch)
+	duration := time.Since(start)
+	if err != nil {
+		return xerrors.Errorf("failed to check state invariants", err)
+	}
+	if acc.IsEmpty() {
+		fmt.Printf("Validation: %s -- no errors -- %v\n", stateRoot, duration)
+	} else {
+		fmt.Printf("Validation: %s -- with errors -- %v\n%s\n", stateRoot, duration, strings.Join(acc.Messages(), "\n"))
+	}
+	return nil
+}
+
 func validateV2(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.ChainEpoch, stateRoot cid.Cid, wrapped bool) error {
 	var tree *states2.Tree
 	var err error
@@ -502,6 +567,15 @@ func validateV2(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.Ch
 		fmt.Printf("Validation: %s -- with errors -- %v\n%s\n", stateRoot, duration, strings.Join(acc.Messages(), "\n"))
 	}
 	return nil
+}
+
+func loadStateTreeV3(ctx context.Context, store cbornode.IpldStore, stateRoot cid.Cid) (*states3.Tree, error) {
+	adtStore := adt3.WrapStore(ctx, store)
+	stateRoot, err := loadStateRoot(ctx, store, stateRoot)
+	if err != nil {
+		return nil, err
+	}
+	return states3.LoadTree(adtStore, stateRoot)
 }
 
 func loadStateTreeV2(ctx context.Context, store cbornode.IpldStore, stateRoot cid.Cid) (*states2.Tree, error) {

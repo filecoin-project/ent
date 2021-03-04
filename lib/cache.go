@@ -4,7 +4,7 @@ import (
 	"encoding/gob"
 	"os"
 
-	migration9 "github.com/filecoin-project/specs-actors/v3/actors/migration/nv9"
+	migration10 "github.com/filecoin-project/specs-actors/v3/actors/migration/nv10"
 	cid "github.com/ipfs/go-cid"
 	"github.com/mitchellh/go-homedir"
 )
@@ -12,7 +12,7 @@ import (
 // persist and load migration caches
 var EntCachePath = "~/.ent/cache/"
 
-func PersistCache(stateRoot cid.Cid, cache migration9.MemMigrationCache) error {
+func PersistCache(stateRoot cid.Cid, cache *migration10.MemMigrationCache) error {
 	// make ent cache directory if it doesn't already exist
 	cacheDirName, err := homedir.Expand(EntCachePath[:len(EntCachePath)-1])
 	if err != nil {
@@ -31,29 +31,29 @@ func PersistCache(stateRoot cid.Cid, cache migration9.MemMigrationCache) error {
 		return err
 	}
 	cacheEnc := gob.NewEncoder(f)
-	persistMap := make(map[migration9.MigrationCacheKey]cid.Cid)
+	persistMap := make(map[string]cid.Cid)
 	cache.MigrationMap.Range(func(k, v interface{}) bool {
-		persistMap[k.(migration9.MigrationCacheKey)] = v.(cid.Cid)
+		persistMap[k.(string)] = v.(cid.Cid)
 		return true
 	})
 	return cacheEnc.Encode(persistMap)
 }
 
-func LoadCache(stateRoot cid.Cid) (migration9.MemMigrationCache, error) {
+func LoadCache(stateRoot cid.Cid) (*migration10.MemMigrationCache, error) {
 	cacheFileName, err := homedir.Expand(EntCachePath + stateRoot.String())
 	if err != nil {
-		return migration9.MemMigrationCache{}, err
+		return nil, err
 	}
 	f, err := os.Open(cacheFileName)
 	if err != nil {
-		return migration9.MemMigrationCache{}, err
+		return nil, err
 	}
 	cacheDec := gob.NewDecoder(f)
 
-	persistMap := make(map[migration9.MigrationCacheKey]cid.Cid)
+	persistMap := make(map[string]cid.Cid)
 	err = cacheDec.Decode(&persistMap)
 
-	cache := migration9.NewMemMigrationCache()
+	cache := migration10.NewMemMigrationCache()
 	for k, v := range persistMap {
 		cache.MigrationMap.Store(k, v)
 	}

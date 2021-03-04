@@ -22,7 +22,7 @@ import (
 	migration7 "github.com/filecoin-project/specs-actors/v2/actors/migration/nv7"
 	states2 "github.com/filecoin-project/specs-actors/v2/actors/states"
 	builtin3 "github.com/filecoin-project/specs-actors/v3/actors/builtin"
-	migration9 "github.com/filecoin-project/specs-actors/v3/actors/migration/nv9"
+	migration10 "github.com/filecoin-project/specs-actors/v3/actors/migration/nv10"
 	states3 "github.com/filecoin-project/specs-actors/v3/actors/states"
 	adt3 "github.com/filecoin-project/specs-actors/v3/actors/util/adt"
 	cid "github.com/ipfs/go-cid"
@@ -171,13 +171,13 @@ func runMigrateV2ToV3Cmd(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	cfg := migration9.Config{
+	cfg := migration10.Config{
 		MaxWorkers:        8,
 		JobQueueSize:      1000,
 		ResultQueueSize:   100,
 		ProgressLogPeriod: 5 * time.Minute,
 	}
-	cache := migration9.NewMemMigrationCache()
+	cache := migration10.NewMemMigrationCache()
 	if cacheStateRootStr := c.String("read-cache"); cacheStateRootStr != "" {
 		cacheStateRoot, err := cid.Decode(cacheStateRootStr)
 		if err != nil {
@@ -191,7 +191,7 @@ func runMigrateV2ToV3Cmd(c *cli.Context) error {
 	}
 
 	start := time.Now()
-	stateRootOut, err := migration9.MigrateStateTree(c.Context, store, stateRootIn, height, cfg, log, cache)
+	stateRootOut, err := migration10.MigrateStateTree(c.Context, store, stateRootIn, height, cfg, log, cache)
 	duration := time.Since(start)
 	if err != nil {
 		return err
@@ -530,7 +530,7 @@ func validateV3(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.Ch
 	acc, err := states3.CheckStateInvariants(tree, expectedBalance, priorEpoch)
 	duration := time.Since(start)
 	if err != nil {
-		return xerrors.Errorf("failed to check state invariants", err)
+		return xerrors.Errorf("failed to check state invariants %w", err)
 	}
 	if acc.IsEmpty() {
 		fmt.Printf("Validation: %s -- no errors -- %v\n", stateRoot, duration)

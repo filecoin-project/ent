@@ -138,12 +138,16 @@ func (rb *BufferedBlockstore) FlushFromBuffer(ctx context.Context, c cid.Cid) er
 	if err != nil {
 		return err
 	}
+	blkCnt := 0
+	byteCnt := 0
 	var batch []block.Block
 	for c := range allCh {
 		blk, err := rb.buffer.Get(c)
 		if err != nil {
 			return xerrors.Errorf("buffer get in flush", err)
 		}
+		blkCnt += 1
+		byteCnt += len(blk.RawData())
 		batch = append(batch, blk)
 		if len(batch) > 100 {
 			if err := rb.write.PutMany(batch); err != nil {

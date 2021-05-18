@@ -41,5 +41,3 @@ require (
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 	google.golang.org/protobuf v1.24.0 // indirect
 )
-
-replace github.com/filecoin-project/specs-actors/v4 => /Users/zenground0/Ground/go/src/github.com/filecoin-project/specs-actors-ghsa-72g3-8g93-5q8c

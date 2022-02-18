@@ -36,6 +36,8 @@ import (
 	builtin6 "github.com/filecoin-project/specs-actors/v6/actors/builtin"
 	migration14 "github.com/filecoin-project/specs-actors/v6/actors/migration/nv14"
 	states6 "github.com/filecoin-project/specs-actors/v6/actors/states"
+	migration15 "github.com/filecoin-project/specs-actors/v7/actors/migration/nv15"
+	states7 "github.com/filecoin-project/specs-actors/v7/actors/states"
 
 	cid "github.com/ipfs/go-cid"
 	cbornode "github.com/ipfs/go-ipld-cbor"
@@ -49,6 +51,17 @@ var migrateCmd = &cli.Command{
 	Name:        "migrate",
 	Description: "migrate a filecoin state root",
 	Subcommands: []*cli.Command{
+		{
+			Name:   "v7",
+			Usage:  "migration a filecoin state tree from v6 to v7",
+			Action: runMigrateV6ToV7Cmd,
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "validate"},
+				&cli.StringFlag{Name: "read-cache"},
+				&cli.StringFlag{Name: "write-cache"},
+			},
+		},
+
 		{
 			Name:   "v6",
 			Usage:  "migrate a filecoin state tree from v5 to v6",
@@ -107,6 +120,14 @@ var validateCmd = &cli.Command{
 	Name:        "validate",
 	Description: "validate a statetree by checking lots of invariants",
 	Subcommands: []*cli.Command{
+		{
+			Name:   "v7",
+			Usage:  "validate a v7 state tree",
+			Action: runValidateV7Cmd,
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "unwrapped"},
+			},
+		},
 		{
 			Name:   "v6",
 			Usage:  "validate a v6 state tree",
@@ -185,6 +206,7 @@ const (
 	V4
 	V5
 	V6
+	V7
 )
 
 var migrateFuncs = map[ActorsVersion]func(context.Context, cid.Cid, string, cbornode.IpldStore, abi.ChainEpoch, *lib.MigrationLogger) (cid.Cid, time.Duration, func() error, error){
@@ -193,6 +215,7 @@ var migrateFuncs = map[ActorsVersion]func(context.Context, cid.Cid, string, cbor
 	V4: migrateV3ToV4,
 	V5: migrateV4ToV5,
 	V6: migrateV5ToV6,
+	V7: migrateV6ToV7,
 }
 
 var validateFuncs = map[ActorsVersion]func(context.Context, cbornode.IpldStore, abi.ChainEpoch, cid.Cid, bool) error{
@@ -201,6 +224,7 @@ var validateFuncs = map[ActorsVersion]func(context.Context, cbornode.IpldStore, 
 	V4: validateV4,
 	V5: validateV5,
 	V6: validateV6,
+	V7: validateV7,
 }
 
 func main() {
@@ -308,6 +332,10 @@ func runMigrateCmd(c *cli.Context, v ActorsVersion) error {
 	return nil
 }
 
+func runMigrateV6ToV7Cmd(c *cli.Context) error {
+	return runMigrateCmd(c, V7)
+}
+
 func runMigrateV5ToV6Cmd(c *cli.Context) error {
 	return runMigrateCmd(c, V6)
 }
@@ -361,6 +389,10 @@ func runValidateCmd(c *cli.Context, v ActorsVersion) error {
 		return fmt.Errorf("unsupported actors version %d for validation\n", v)
 	}
 	return val(c.Context, store, height, stateRoot, wrapped)
+}
+
+func runValidateV7Cmd(c *cli.Context) error {
+	return runValidateCmd(c, V7)
 }
 
 func runValidateV6Cmd(c *cli.Context) error {
@@ -683,6 +715,70 @@ func migrateV5ToV6(ctx context.Context, stateRootIn cid.Cid, cacheRootStr string
 		return nil
 	}
 	return stateRootOut, duration, cacheWriteCallback, nil
+}
+
+func migrateV6ToV7(ctx context.Context, stateRootIn cid.Cid, cacheRootStr string, store cbornode.IpldStore, height abi.ChainEpoch, log *lib.MigrationLogger) (cid.Cid, time.Duration, func() error, error) {
+	cfg := migration15.Config{
+		MaxWorkers:        8,
+		JobQueueSize:      1000,
+		ResultQueueSize:   100,
+		ProgressLogPeriod: 5 * time.Minute,
+	}
+	cache := migration10.NewMemMigrationCache()
+	if cacheRootStr != "" {
+		cacheStateRoot, err := cid.Decode(cacheRootStr)
+		if err != nil {
+			return cid.Undef, time.Duration(0), nil, err
+		}
+		cache, err = lib.LoadCache(cacheStateRoot)
+		if err != nil {
+			return cid.Undef, time.Duration(0), nil, err
+		}
+		fmt.Printf("read cache from %s/%s\n", lib.EntCachePath, cacheStateRoot)
+	}
+	start := time.Now()
+	stateRootOut, err := migration15.MigrateStateTree(ctx, store, stateRootIn, height, cfg, log, cache)
+	if err != nil {
+		return cid.Undef, time.Duration(0), nil, err
+	}
+	duration := time.Since(start)
+	cacheWriteCallback := func() error {
+		persistStart := time.Now()
+		if err := lib.PersistCache(stateRootIn, cache); err != nil {
+			return err
+		}
+		persistDuration := time.Since(persistStart)
+		fmt.Printf("cache written to %s/%s, write time: %v\n", lib.EntCachePath, stateRootIn, persistDuration)
+		return nil
+	}
+	return stateRootOut, duration, cacheWriteCallback, nil
+}
+
+func validateV7(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.ChainEpoch, stateRoot cid.Cid, wrapped bool) error {
+	var err error
+	if wrapped {
+		stateRoot, err = loadStateRoot(ctx, store, stateRoot)
+		if err != nil {
+			return xerrors.Errorf("failed to unwrap state root: %w", err)
+		}
+	}
+	tree, err := states7.LoadTree(adt5.WrapStore(ctx, store), stateRoot)
+	if err != nil {
+		return xerrors.Errorf("failed to load tree: %w", err)
+	}
+	expectedBalance := builtin6.TotalFilecoin
+	start := time.Now()
+	acc, err := states7.CheckStateInvariants(tree, expectedBalance, priorEpoch)
+	duration := time.Since(start)
+	if err != nil {
+		return xerrors.Errorf("failed to check state invariants %w", err)
+	}
+	if acc.IsEmpty() {
+		fmt.Printf("Validation: %s -- no errors -- %v\n", stateRoot, duration)
+	} else {
+		fmt.Printf("Validation: %s -- with errors -- %v\n%s\n", stateRoot, duration, strings.Join(acc.Messages(), "\n"))
+	}
+	return nil
 }
 
 func validateV6(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.ChainEpoch, stateRoot cid.Cid, wrapped bool) error {

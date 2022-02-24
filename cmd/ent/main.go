@@ -741,14 +741,34 @@ func migrateV6ToV7(ctx context.Context, stateRootIn cid.Cid, cacheRootStr string
 		ResultQueueSize:   100,
 		ProgressLogPeriod: 1 * time.Minute,
 	}
-	cache := nilCache{}
+	cache := migration10.NewMemMigrationCache()
+	if cacheRootStr != "" {
+		cacheStateRoot, err := cid.Decode(cacheRootStr)
+		if err != nil {
+			return cid.Undef, time.Duration(0), nil, err
+		}
+		cache, err = lib.LoadCache(cacheStateRoot)
+		if err != nil {
+			return cid.Undef, time.Duration(0), nil, err
+		}
+		fmt.Printf("read cache from %s/%s\n", lib.EntCachePath, cacheStateRoot)
+	}
 	start := time.Now()
 	stateRootOut, err := migration15.MigrateStateTree(ctx, store, stateRootIn, height, cfg, log, cache)
 	if err != nil {
 		return cid.Undef, time.Duration(0), nil, err
 	}
 	duration := time.Since(start)
-	return stateRootOut, duration, func() error { return nil }, nil
+	cacheWriteCallback := func() error {
+		persistStart := time.Now()
+		if err := lib.PersistCache(stateRootIn, cache); err != nil {
+			return err
+		}
+		persistDuration := time.Since(persistStart)
+		fmt.Printf("cache written to %s/%s, write time: %v\n", lib.EntCachePath, stateRootIn, persistDuration)
+		return nil
+	}
+	return stateRootOut, duration, cacheWriteCallback, nil
 }
 
 func validateV7(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.ChainEpoch, stateRoot cid.Cid, wrapped bool) error {

@@ -19,7 +19,8 @@ var lotusPath = "~/.lotus/datastore/chain"
 var entChainPath = "~/.ent/datastore/chain"
 
 type Chain struct {
-	cachedBs *BufferedBlockstore
+	cachedBs     *BufferedBlockstore
+	cachedAutoBs *AutobatchBlockstore
 }
 
 // Lifted from lotus/node/repo/fsrepo_ds.go
@@ -42,9 +43,19 @@ func (c *Chain) loadBufferedBstore(ctx context.Context) (*BufferedBlockstore, er
 	return c.cachedBs, err
 }
 
+func (c *Chain) loadAutoBatchBstore(ctx context.Context) (*AutobatchBlockstore, error) {
+	if c.cachedAutoBs != nil {
+		return c.cachedAutoBs, nil
+	}
+	bs, err := NewEntBlockstore(lotusPath, entChainPath)
+	GiB := 1024 * 1024 * 1024
+	c.cachedAutoBs = NewAutobatch(ctx, bs, GiB/4)
+	return c.cachedAutoBs, err
+}
+
 // LoadCborStore loads the ~/.lotus chain datastore for chain traversal and state loading
 func (c *Chain) LoadCborStore(ctx context.Context) (cbornode.IpldStore, error) {
-	bs, err := c.loadBufferedBstore(ctx)
+	bs, err := c.loadAutoBatchBstore(ctx)
 	if err != nil {
 		return nil, err
 	}

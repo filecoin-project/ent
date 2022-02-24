@@ -304,14 +304,6 @@ func runMigrateCmd(c *cli.Context, v ActorsVersion) error {
 	}
 	fmt.Printf("%s => %s -- %v\n", stateRootIn, stateRootOut, duration)
 
-	// Measure flush time
-	writeStart := time.Now()
-	if err := chn.FlushBufferedState(c.Context, stateRootOut); err != nil {
-		return xerrors.Errorf("failed to flush state tree to disk: %w\n", err)
-	}
-	writeDuration := time.Since(writeStart)
-	fmt.Printf("%s buffer flush time: %v\n", stateRootOut, writeDuration)
-
 	if c.Bool("write-cache") {
 		if err := cacheWriteCB(); err != nil {
 			return err

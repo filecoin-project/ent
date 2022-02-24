@@ -2,6 +2,7 @@ package lib
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -133,6 +134,7 @@ func (bs *AutobatchBlockstore) doFlush(ctx context.Context, retryOnly bool) erro
 	bs.stateLock.Unlock()
 
 	// And try to flush it.
+	fmt.Printf("do flush called! flushing %d blocks", len(bs.flushingBatch.blockList))
 	bs.flushErr = bs.backingBs.PutMany(bs.flushingBatch.blockList)
 
 	// If we succeeded, reset the batch. Otherwise, we'll try again next time.

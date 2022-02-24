@@ -734,6 +734,7 @@ func (n nilCache) Load(key string, loadFunc func() (cid.Cid, error)) (cid.Cid, e
 }
 
 func migrateV6ToV7(ctx context.Context, stateRootIn cid.Cid, cacheRootStr string, store cbornode.IpldStore, height abi.ChainEpoch, log *lib.MigrationLogger) (cid.Cid, time.Duration, func() error, error) {
+	fmt.Printf("migrate v6 to v7\n")
 	cfg := migration15.Config{
 		MaxWorkers:        8,
 		JobQueueSize:      1000,

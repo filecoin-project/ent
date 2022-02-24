@@ -717,6 +717,22 @@ func migrateV5ToV6(ctx context.Context, stateRootIn cid.Cid, cacheRootStr string
 	return stateRootOut, duration, cacheWriteCallback, nil
 }
 
+type nilCache struct{}
+
+func (n nilCache) Write(key string, newCid cid.Cid) error {
+	return nil
+}
+func (n nilCache) Read(key string) (bool, cid.Cid, error) {
+	return false, cid.Undef, nil
+}
+func (n nilCache) Load(key string, loadFunc func() (cid.Cid, error)) (cid.Cid, error) {
+	c, err := loadFunc()
+	if err != nil {
+		return cid.Undef, err
+	}
+	return c, nil
+}
+
 func migrateV6ToV7(ctx context.Context, stateRootIn cid.Cid, cacheRootStr string, store cbornode.IpldStore, height abi.ChainEpoch, log *lib.MigrationLogger) (cid.Cid, time.Duration, func() error, error) {
 	cfg := migration15.Config{
 		MaxWorkers:        8,
@@ -724,34 +740,14 @@ func migrateV6ToV7(ctx context.Context, stateRootIn cid.Cid, cacheRootStr string
 		ResultQueueSize:   100,
 		ProgressLogPeriod: 5 * time.Minute,
 	}
-	cache := migration10.NewMemMigrationCache()
-	if cacheRootStr != "" {
-		cacheStateRoot, err := cid.Decode(cacheRootStr)
-		if err != nil {
-			return cid.Undef, time.Duration(0), nil, err
-		}
-		cache, err = lib.LoadCache(cacheStateRoot)
-		if err != nil {
-			return cid.Undef, time.Duration(0), nil, err
-		}
-		fmt.Printf("read cache from %s/%s\n", lib.EntCachePath, cacheStateRoot)
-	}
+	cache := nilCache{}
 	start := time.Now()
 	stateRootOut, err := migration15.MigrateStateTree(ctx, store, stateRootIn, height, cfg, log, cache)
 	if err != nil {
 		return cid.Undef, time.Duration(0), nil, err
 	}
 	duration := time.Since(start)
-	cacheWriteCallback := func() error {
-		persistStart := time.Now()
-		if err := lib.PersistCache(stateRootIn, cache); err != nil {
-			return err
-		}
-		persistDuration := time.Since(persistStart)
-		fmt.Printf("cache written to %s/%s, write time: %v\n", lib.EntCachePath, stateRootIn, persistDuration)
-		return nil
-	}
-	return stateRootOut, duration, cacheWriteCallback, nil
+	return stateRootOut, duration, func() error { return nil }, nil
 }
 
 func validateV7(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.ChainEpoch, stateRoot cid.Cid, wrapped bool) error {

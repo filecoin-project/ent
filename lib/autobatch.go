@@ -166,6 +166,8 @@ func (bs *AutobatchBlockstore) Shutdown(ctx context.Context) error {
 }
 
 func (bs *AutobatchBlockstore) Get(c cid.Cid) (block.Block, error) {
+	fmt.Printf("get get get \n")
+
 	// may seem backward to check the backingBs first, but that is the likeliest case
 	blk, err := bs.backingBs.Get(c)
 	if err == nil {

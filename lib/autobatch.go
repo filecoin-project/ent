@@ -2,6 +2,7 @@ package lib
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -186,7 +187,7 @@ func (bs *AutobatchBlockstore) Get(c cid.Cid) (block.Block, error) {
 	if ok {
 		return v, nil
 	}
-
+	fmt.Printf("get get get \n")
 	return bs.Get(c)
 }
 

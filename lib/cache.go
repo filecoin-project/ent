@@ -2,6 +2,7 @@ package lib
 
 import (
 	"encoding/gob"
+	"fmt"
 	"os"
 
 	migration10 "github.com/filecoin-project/specs-actors/v3/actors/migration/nv10"
@@ -13,6 +14,7 @@ import (
 var EntCachePath = "~/.ent/cache/"
 
 func PersistCache(stateRoot cid.Cid, cache *migration10.MemMigrationCache) error {
+	fmt.Printf("persisting cache\n")
 	// make ent cache directory if it doesn't already exist
 	cacheDirName, err := homedir.Expand(EntCachePath[:len(EntCachePath)-1])
 	if err != nil {
@@ -26,6 +28,7 @@ func PersistCache(stateRoot cid.Cid, cache *migration10.MemMigrationCache) error
 	if err != nil {
 		return err
 	}
+	fmt.Printf("persisting cache to %s\n", cacheFileName)
 	f, err := os.Create(cacheFileName)
 	if err != nil {
 		return err

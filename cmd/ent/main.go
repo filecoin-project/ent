@@ -777,6 +777,7 @@ func validateV7(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.Ch
 	}
 	expectedBalance := builtin6.TotalFilecoin
 	start := time.Now()
+	fmt.Printf("v7 validate begin\n")
 	acc, err := states7.CheckStateInvariants(tree, expectedBalance, priorEpoch)
 	duration := time.Since(start)
 	if err != nil {

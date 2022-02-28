@@ -38,6 +38,7 @@ import (
 	states6 "github.com/filecoin-project/specs-actors/v6/actors/states"
 	migration15 "github.com/filecoin-project/specs-actors/v7/actors/migration/nv15"
 	states7 "github.com/filecoin-project/specs-actors/v7/actors/states"
+	adt7 "github.com/filecoin-project/specs-actors/v7/actors/util/adt"
 
 	cid "github.com/ipfs/go-cid"
 	cbornode "github.com/ipfs/go-ipld-cbor"
@@ -774,7 +775,7 @@ func validateV7(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.Ch
 		}
 	}
 	fmt.Printf("loading the tree\n")
-	tree, err := states7.LoadTree(adt5.WrapStore(ctx, store), stateRoot)
+	tree, err := states7.LoadTree(adt7.WrapStore(ctx, store), stateRoot)
 	if err != nil {
 		return xerrors.Errorf("failed to load tree: %w", err)
 	}

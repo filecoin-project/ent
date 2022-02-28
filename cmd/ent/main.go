@@ -369,7 +369,7 @@ func runValidateCmd(c *cli.Context, v ActorsVersion) error {
 	}
 	height := abi.ChainEpoch(int64(hRaw))
 	chn := lib.Chain{}
-	store, err := chn.LoadCborStore(c.Context)
+	store, err := chn.LoadBufferedCborStore(c.Context)
 	if err != nil {
 		return err
 	}

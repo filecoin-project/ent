@@ -62,6 +62,14 @@ func (c *Chain) LoadCborStore(ctx context.Context) (cbornode.IpldStore, error) {
 	return cbornode.NewCborStore(bs), nil
 }
 
+func (c *Chain) LoadBufferedCborStore(ctx context.Context) (cbornode.IpldStore, error) {
+	bs, err := c.loadBufferedBstore(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return cbornode.NewCborStore(bs), nil
+}
+
 func (c *Chain) LoadToReadOnlyBuffer(ctx context.Context, stateRoot cid.Cid) error {
 	bs, err := c.loadBufferedBstore(ctx)
 	if err != nil {

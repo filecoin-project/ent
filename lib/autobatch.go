@@ -2,7 +2,6 @@ package lib
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -166,7 +165,6 @@ func (bs *AutobatchBlockstore) Shutdown(ctx context.Context) error {
 }
 
 func (bs *AutobatchBlockstore) Get(c cid.Cid) (block.Block, error) {
-	fmt.Printf("get get get \n")
 
 	// may seem backward to check the backingBs first, but that is the likeliest case
 	blk, err := bs.backingBs.Get(c)
@@ -189,7 +187,6 @@ func (bs *AutobatchBlockstore) Get(c cid.Cid) (block.Block, error) {
 	if ok {
 		return v, nil
 	}
-	fmt.Printf("get get get \n")
 	return bs.Get(c)
 }
 

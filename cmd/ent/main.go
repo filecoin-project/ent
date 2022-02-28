@@ -764,13 +764,16 @@ func migrateV6ToV7(ctx context.Context, stateRootIn cid.Cid, cacheRootStr string
 }
 
 func validateV7(ctx context.Context, store cbornode.IpldStore, priorEpoch abi.ChainEpoch, stateRoot cid.Cid, wrapped bool) error {
+	fmt.Printf("start of v7 validate\n")
 	var err error
 	if wrapped {
+		fmt.Printf("in wrapped\n")
 		stateRoot, err = loadStateRoot(ctx, store, stateRoot)
 		if err != nil {
 			return xerrors.Errorf("failed to unwrap state root: %w", err)
 		}
 	}
+	fmt.Printf("loading the tree\n")
 	tree, err := states7.LoadTree(adt5.WrapStore(ctx, store), stateRoot)
 	if err != nil {
 		return xerrors.Errorf("failed to load tree: %w", err)

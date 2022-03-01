@@ -14,7 +14,7 @@ require (
 	github.com/filecoin-project/specs-actors/v4 v4.0.0
 	github.com/filecoin-project/specs-actors/v5 v5.0.4
 	github.com/filecoin-project/specs-actors/v6 v6.0.1
-	github.com/filecoin-project/specs-actors/v7 v7.0.1-0.20220228232323-876180a66a75
+	github.com/filecoin-project/specs-actors/v7 v7.0.1-0.20220301052203-5acab66b23df
 	github.com/golang/protobuf v1.4.2 // indirect
 	github.com/golang/snappy v0.0.2-0.20190904063534-ff6b7dc882cf // indirect
 	github.com/ipfs/go-block-format v0.0.3

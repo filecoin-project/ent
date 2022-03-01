@@ -59,7 +59,7 @@ var migrateCmd = &cli.Command{
 			Flags: []cli.Flag{
 				&cli.BoolFlag{Name: "validate"},
 				&cli.StringFlag{Name: "read-cache"},
-				&cli.StringFlag{Name: "write-cache"},
+				&cli.BoolFlag{Name: "write-cache"},
 			},
 		},
 
@@ -70,7 +70,7 @@ var migrateCmd = &cli.Command{
 			Flags: []cli.Flag{
 				&cli.BoolFlag{Name: "validate"},
 				&cli.StringFlag{Name: "read-cache"},
-				&cli.StringFlag{Name: "write-cache"},
+				&cli.BoolFlag{Name: "write-cache"},
 			},
 		},
 
@@ -260,6 +260,9 @@ func main() {
 }
 
 func runMigrateCmd(c *cli.Context, v ActorsVersion) error {
+	if !c.Bool("write-cache") {
+		fmt.Printf("no write cache\n")
+	}
 	if c.Args().Len() != 2 {
 		return xerrors.Errorf("not enough args, need state root to migrate and height of state")
 	}
@@ -306,6 +309,7 @@ func runMigrateCmd(c *cli.Context, v ActorsVersion) error {
 	fmt.Printf("%s => %s -- %v\n", stateRootIn, stateRootOut, duration)
 
 	if c.Bool("write-cache") {
+		fmt.Printf("write cache\n")
 		if err := cacheWriteCB(); err != nil {
 			return err
 		}
